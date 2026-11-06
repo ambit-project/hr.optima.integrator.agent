@@ -1,0 +1,8 @@
+bin/
+obj/
+.git/
+*.xml
+*.csproj
+*.props
+*.targets
+src/ambit-agent-desktop/
