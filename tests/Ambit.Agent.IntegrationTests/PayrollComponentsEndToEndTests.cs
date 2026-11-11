@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Ambit.Agent.Core.Employees;
 using Ambit.Agent.Core.Operations;
 using Ambit.Agent.Infrastructure.AmbitApi;
 using Ambit.Agent.SqlServer;
@@ -59,7 +60,8 @@ public sealed class PayrollComponentsEndToEndTests
     public async Task A_claimed_read_reports_the_components_marked_in_Optima()
     {
         using var ambit = new FakeAmbit();
-        using var http = new HttpClient(ambit) { BaseAddress = new Uri("https://ambit.example/") };
+        using var http = new HttpClient(ambit);
+        http.BaseAddress = new Uri("https://ambit.example/");
         var sql = Options.Create(
             new SqlServerOptions
             {
@@ -67,9 +69,16 @@ public sealed class PayrollComponentsEndToEndTests
                 TrustServerCertificate = true,
             }
         );
+        var client = new HttpAmbitApiClient(http, Options.Create(new WriteOptions()));
         var poller = new OperationPoller(
-            new HttpAmbitApiClient(http),
-            new OperationRunner(new SqlPayrollComponentReader(sql), TimeProvider.System),
+            client,
+            new OperationRunner(
+                new SqlPayrollComponentReader(sql),
+                new SqlEmployeeWriter(sql),
+                client,
+                Options.Create(new WriteOptions()),
+                TimeProvider.System
+            ),
             Options.Create(new AmbitApiOptions()),
             TimeProvider.System,
             NullLogger<OperationPoller>.Instance

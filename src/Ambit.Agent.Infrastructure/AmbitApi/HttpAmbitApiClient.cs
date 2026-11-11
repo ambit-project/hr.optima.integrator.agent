@@ -1,11 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Ambit.Agent.Core.Employees;
 using Ambit.Agent.Core.Operations;
+using Microsoft.Extensions.Options;
 
 namespace Ambit.Agent.Infrastructure.AmbitApi;
 
-public sealed class HttpAmbitApiClient(HttpClient http) : IAmbitApiClient
+public sealed class HttpAmbitApiClient(HttpClient http, IOptions<WriteOptions> writes)
+    : IAmbitApiClient
 {
     public const string KeyHeader = "X-Optima-Agent-Key";
     public const string ConnectionPath = "api/optima/agent/connection";
@@ -18,7 +21,7 @@ public sealed class HttpAmbitApiClient(HttpClient http) : IAmbitApiClient
         var claim = new
         {
             AgentVersion = typeof(HttpAmbitApiClient).Assembly.GetName().Version?.ToString(),
-            SupportedKinds = OperationKinds.Supported,
+            SupportedKinds = OperationKinds.SupportedWith(writes.Value.Enabled),
         };
         using var response = await http.PostAsJsonAsync(ClaimPath, claim, Json, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -26,6 +29,22 @@ public sealed class HttpAmbitApiClient(HttpClient http) : IAmbitApiClient
         return response.StatusCode == HttpStatusCode.NoContent
             ? null
             : await response.Content.ReadFromJsonAsync<AgentOperation>(Json, cancellationToken);
+    }
+
+    public async Task<EmployeesWork?> GetEmployeesAsync(
+        Guid operationId,
+        CancellationToken cancellationToken
+    )
+    {
+        using var response = await http.GetAsync(
+            $"api/optima/agent/operations/{operationId}/employees",
+            cancellationToken
+        );
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<EmployeesWork>(Json, cancellationToken);
     }
 
     public async Task<bool> ReportAsync(

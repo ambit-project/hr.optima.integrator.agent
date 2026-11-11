@@ -10,7 +10,7 @@ the results.
 - `installer` - the client's installer (`docs/adr/0004-client-installer.md`).
 - `docs/adr` - decisions.
 
-Status: stage 0. So far the Worker answers `status`, `sql.identity` and, when `Writes:Enabled` is set, `employee.add`
+Status: stage 0. So far the Worker answers `status`, `sql.identity` and, when `Writes:Enabled` is set, `employee.add` (also as Ambit's `AddEmployees` operation, ADR 0006)
 over IPC. With a token from Ambit, given to the installer (`docs/adr/0005-ambit-connection-in-the-installer.md`), it also
 takes operations from Ambit and reads Optima's payroll components (`docs/adr/0003-operations-from-ambit.md`, with the
 HTTP contract). Ambit's side of that contract is not finished yet.
