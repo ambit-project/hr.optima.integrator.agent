@@ -1,6 +1,6 @@
 # What the agent does, and what is not done yet
 
-State on 2026-11-11: agent `main` at `1999c47`, Ambit (`ambit.es`) `main` at `8f4ab526`. Ambit's open work is task
+State on 2026-11-11: agent with ADR 0007, Ambit (`ambit.es`) `main` at `8f4ab526`. Ambit's open work is task
 `.instructions/201-optima-payroll-components-deductions.md` in `ambit.es`.
 
 The goal (`ambit.es`, `.instructions/200-optima-integration.md`) has two parts:
@@ -20,7 +20,7 @@ defines.
 | Adding Ambit's employees to Optima (`AddEmployees`) | done (ADR 0006), only with `Writes:Enabled` | done (ADR 0083) | yes, not yet run against a live Ambit |
 | Reading Optima's deductions and allowances and sending them to Ambit | done (`ReadPayrollComponents`) | done as `ReadDeductionDefinitions` | no, the names differ |
 | Mapping Ambit's deduction types to Optima's components | - | not started (task 201) | no |
-| Writing an employee's deductions to Optima | not started, checked once by hand | not started (task 201) | no |
+| Writing a month's deductions to Optima (`ExportDeductions`) | done (ADR 0007), only with `Writes:Enabled` | not started (task 201) | no |
 
 ## Done in the agent
 
@@ -39,7 +39,8 @@ defines.
   (`POST .../operations/{id}/result`), with the `X-Optima-Agent-Key` header. It opens no port.
 - An operation runs once. Only an operator in Ambit starts another attempt, under the same id.
 - Off by default (`AmbitApi:Enabled`).
-- Kinds: `ReadPayrollComponents` always, `AddEmployees` only when `Writes:Enabled` is set locally.
+- Kinds: `ReadPayrollComponents` always, `AddEmployees` and `ExportDeductions` only when `Writes:Enabled` is set
+  locally.
 
 ### Adding employees (`employee.add` locally, `AddEmployees` from Ambit; ADR 0002, ADR 0006)
 
@@ -82,9 +83,10 @@ defines.
 
 ### Writing deductions to Optima
 
-- Not started in the agent: no procedure, no operation kind.
-- Checked once by hand: one deduction written with Comarch's `CDN.ImportDataDodatki` and `CDN.ImportDataDodatkiHist`
+- Done in the agent (ADR 0007): the operation `ExportDeductions` for one company and one month. The agent reads the
+  deductions from `GET /api/optima/agent/operations/{id}/deductions` and writes each one with `app.deduction_add`,
+  through Comarch's `CDN.ImportDataDodatki` and `CDN.ImportDataDodatkiHist`, valid for that month.
+- The rows carry a key made from the deduction and the month, so a month exported again is written once.
+- Ambit's side is not built: the endpoint, the operation and its payload (task 201, topic 3).
+- Not checked yet: a payroll run with a deduction written by the agent. One written by hand with the same procedures
   entered a payroll run as -500.00 without changing the ZUS or health bases (2026-11-06, `CDN_AmbitProd`).
-- To do: Ambit proposes the operation (task 201, topic 3, e.g. `ExportDeductions`, with the items read like the
-  employees of ADR 0006). Then the agent: an `app.` procedure built on those Comarch procedures, keyed so that a retry
-  skips what an earlier attempt wrote, offered only with `Writes:Enabled`.

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Ambit.Agent.Core.Deductions;
 using Ambit.Agent.Core.Employees;
 using JetBrains.Annotations;
 
@@ -15,11 +16,14 @@ public static class OperationKinds
     /// <summary>ADR 0006: adds Ambit's people to Optima. Offered only when writes are switched on locally.</summary>
     public const string AddEmployees = "AddEmployees";
 
+    /// <summary>ADR 0007: gives employees one month's deductions. Offered only when writes are switched on locally.</summary>
+    public const string ExportDeductions = "ExportDeductions";
+
     private static readonly IReadOnlyList<string> Supported = [ReadPayrollComponents];
 
     /// <summary>What this agent tells Ambit it can run: a write only where an administrator allowed writes.</summary>
     public static IReadOnlyList<string> SupportedWith(bool writesEnabled) =>
-        writesEnabled ? [ReadPayrollComponents, AddEmployees] : Supported;
+        writesEnabled ? [ReadPayrollComponents, AddEmployees, ExportDeductions] : Supported;
 }
 
 /// <summary>
@@ -43,8 +47,21 @@ public static class OperationLogCodes
     public const string EmployeesUnavailable = "employees_unavailable";
     public const string NoCompanyWritable = "no_company_writable";
     public const string WritesDisabled = "writes_disabled";
+
+    public const string DeductionAdded = "deduction_added";
+    public const string DeductionExists = "deduction_exists";
+    public const string DeductionRejected = "deduction_rejected";
+    public const string DeductionFailed = "deduction_failed";
+    public const string EmployeeNotFound = "employee_not_found";
+    public const string ComponentNotFound = "component_not_found";
+    public const string DeductionsFailed = "deductions_failed";
+    public const string DeductionsUnavailable = "deductions_unavailable";
 }
 
+/// <summary>
+/// One step of an operation's log. <see cref="WarningCodes"/> carries the agent's own codes, such as
+/// <c>MATCHED_BY_ACRONYM_ONLY</c>.
+/// </summary>
 [UsedImplicitly(ImplicitUseTargetFlags.Members)] // Serialized for Ambit.
 public sealed record OperationLogEntry(
     DateTimeOffset At,
@@ -52,7 +69,9 @@ public sealed record OperationLogEntry(
     string? DatabaseName = null,
     int? ErrorNumber = null,
     int? Count = null,
-    Guid? EmployeeId = null
+    Guid? EmployeeId = null,
+    Guid? DeductionId = null,
+    string? WarningCodes = null
 );
 
 /// <summary>The outcome of one attempt. Only an operator in Ambit can start another.</summary>
@@ -87,6 +106,15 @@ public sealed record EmployeesWork(
         Span<byte> input = stackalloc byte[32];
         operationId.TryWriteBytes(input[..16]);
         employeeId.TryWriteBytes(input[16..]);
+        return DerivedGuid.From(input);
+    }
+}
+
+/// <summary>A version 8 UUID (RFC 9562) from a SHA-256 of the input: the same input always gives the same id.</summary>
+public static class DerivedGuid
+{
+    public static Guid From(ReadOnlySpan<byte> input)
+    {
         Span<byte> hash = stackalloc byte[32];
         SHA256.HashData(input, hash);
 
@@ -107,6 +135,12 @@ public interface IAmbitApiClient
     /// final). An exception means Ambit could not be reached.
     /// </summary>
     Task<EmployeesWork?> GetEmployeesAsync(Guid operationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The deductions of an ExportDeductions operation this agent holds, or null when Ambit no longer hands them out (a
+    /// 404 is final). An exception means Ambit could not be reached.
+    /// </summary>
+    Task<DeductionsWork?> GetDeductionsAsync(Guid operationId, CancellationToken cancellationToken);
 
     /// <summary>False when Ambit refused the report for good. An exception means it may be sent again.</summary>
     Task<bool> ReportAsync(

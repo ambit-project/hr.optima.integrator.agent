@@ -17,6 +17,15 @@ GRANT SELECT ON CDN.TypWyplata (
     TWP_TwpId, TWP_Nazwa, TWP_Skrot, TWP_RodzajZrodla, TWP_Standardowy, TWP_AlgKwota, TWP_PKZP, TWP_ZajecieWynagr,
     TWP_ImportRowId, TWP_ImportRowId2, TWP_AlgPotracenie, TWP_Nieaktywny, TWP_Wycofany
 ) TO [$(ServiceLogin)];
+-- Deductions (ADR 0007): Comarch's import procedures write the rows, and the agent reads only the keys.
+-- An older Optima without these procedures still gets the rights above.
+IF OBJECT_ID(N'CDN.ImportDataDodatki') IS NOT NULL AND OBJECT_ID(N'CDN.ImportDataDodatkiHist') IS NOT NULL
+BEGIN
+    GRANT EXECUTE ON OBJECT::CDN.ImportDataDodatki TO [$(ServiceLogin)];
+    GRANT EXECUTE ON OBJECT::CDN.ImportDataDodatkiHist TO [$(ServiceLogin)];
+    GRANT SELECT ON CDN.Dodatki (DOD_DodId, DOD_PraId) TO [$(ServiceLogin)];
+    GRANT SELECT ON CDN.DodatkiHist (DOH_DohId, DOH_DodId, DOH_ImportRowId) TO [$(ServiceLogin)];
+END;
 GRANT UPDATE ON CDN.PracEtaty (
     PRE_Plec, PRE_Obywatelstwo, PRE_ObywatelKodKraju, PRE_MLDKodKraju,
     PRE_DowOsobisty, PRE_Paszport, PRE_DowWaznyDo, PRE_ZatrudnionyDo

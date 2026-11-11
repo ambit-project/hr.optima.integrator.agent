@@ -10,7 +10,8 @@ How the rights work, because the code below depends on it:
 Procedures in this file:
 - app.log_write, app.log_purge                 the Worker's logs and their retention
 - app.employee_call_mark_interrupted           closes calls cut off by a stopped Worker
-- app.employee_add                             the only write to Optima
+- app.employee_add                             adds an employee to Optima
+- app.deduction_add                            gives an employee one month's deduction in Optima
 - app.payroll_components_read                  reads deductions and allowances for Ambit
 */
 USE [$(AgentDatabase)];
@@ -57,6 +58,7 @@ BEGIN
 
     DELETE agent.log_entry WHERE logged_at < @before;
     DELETE agent.employee_call WHERE started_at < @before AND status <> 'Started';
+    DELETE agent.deduction_call WHERE started_at < @before;
 END;
 GO
 
@@ -476,6 +478,259 @@ SELECT @employee_row_id = PRE_PraId FROM CDN.PracEtaty WHERE PRE_PreId = @contra
     WHERE operation_id = @operation_id
       AND database_name IN (SELECT database_name FROM @firms)
     ORDER BY database_name;
+END;
+GO
+
+/*
+Gives one employee one month's deduction in one company (ADR 0007). Returns one row, read from agent.deduction_call.
+
+In Optima a deduction given to an employee is a row of CDN.Dodatki (the employee's component) with a row of
+CDN.DodatkiHist (its value and the dates it is valid). Comarch's CDN.ImportDataDodatki and CDN.ImportDataDodatkiHist
+write them. Both refuse an import key they already have, and both carry the same key here: @optima_key, which the
+Worker derives from the Ambit deduction and the month. So a deduction exported twice for one month is written once,
+whichever operation repeats it. The shape of the rows is the one that went through a real payroll run on 2026-11-06:
+valid from the first to the last day of the month, no operator, payment as the employee's.
+
+The order of work:
+1. Check the request. A bad request is refused with THROW, before the company is touched.
+2. Skip the work when this operation already wrote or found this deduction.
+3. Stop if the account has no access to the company, or its tax number differs from Optima's list.
+4. In one transaction on the company database:
+   a. Stop if the key is already there (AlreadyExists).
+   b. Find the employee by Ambit's id, else by the acronym (EmployeeNotFound).
+   c. Find the component, which must be an active deduction (ComponentNotFound).
+   d. Write both rows.
+5. Record the outcome in agent.deduction_call and return it. An error is kept as numbers only.
+*/
+CREATE OR ALTER PROCEDURE app.deduction_add
+    @operation_id uniqueidentifier,
+    @deduction_id uniqueidentifier,
+    @optima_key uniqueidentifier,
+    @database_name sysname,
+    @employee_id uniqueidentifier,
+    @employee_code nvarchar(4000),
+    @optima_component_id int,
+    @year int,
+    @month int,
+    @amount decimal(38, 6),
+    @currency nvarchar(4000) = NULL
+AS
+BEGIN
+    SET NOCOUNT, XACT_ABORT ON;
+
+    -- The company commits on its own, which a caller's transaction would undo.
+    IF @@TRANCOUNT > 0
+        THROW 51001, N'app.deduction_add cannot run inside a transaction.', 1;
+
+    -- Step 1: check the request. The parameters are wider than Optima's columns, so a value too big is seen here
+    -- instead of being cut.
+    SELECT
+        @employee_code = ISNULL(TRIM(@employee_code), N''),
+        @currency = ISNULL(NULLIF(UPPER(TRIM(@currency)), N''), N'PLN'),
+        @database_name = TRIM(@database_name);
+
+    IF @operation_id IS NULL OR @deduction_id IS NULL OR @optima_key IS NULL OR @employee_id IS NULL
+        THROW 51020, N'operation_id, deduction_id, optima_key and employee_id are required.', 1;
+    IF ISNULL(@database_name, N'') = N'' OR @optima_component_id IS NULL
+        THROW 51021, N'database_name and optima_component_id are required.', 1;
+    IF @employee_code = N'' OR LEN(@employee_code) > 20
+        THROW 51022, N'employee_code is required and has at most 20 characters.', 1;
+    IF @year IS NULL OR @month IS NULL OR @year NOT BETWEEN 2000 AND 2998 OR @month NOT BETWEEN 1 AND 12
+        THROW 51023, N'The month is not valid.', 1;
+    -- DOH_Wartosc1 is decimal(15, 2): no more than two decimals, and the deduction's sign comes from the component.
+    IF @amount IS NULL OR @amount <= 0 OR @amount > 9999999999999.99 OR @amount <> ROUND(@amount, 2)
+        THROW 51024, N'amount must be positive, with at most two decimals.', 1;
+    -- Optima's payroll is in złoty; DOH_OddelegowanyWaluta is for posted workers, which Ambit does not export.
+    IF @currency <> N'PLN'
+        THROW 51025, N'Only PLN deductions can be exported.', 1;
+
+    DECLARE @tax_id nvarchar(40) = NULL, @listed bit = 0;
+
+    -- Optima's list of companies, as app.employee_add reads it. NULLIF turns "no number" into NULL: nothing to compare.
+    SELECT @listed = 1, @tax_id = NULLIF(MAX(ISNULL(REPLACE(TRIM(Baz_NIP), '-', ''), '')), '')
+    FROM agent.optima_databases
+    WHERE ISNULL(Baz_Nieaktywna, 0) = 0 AND TRIM(Baz_NazwaBazy) = @database_name
+    HAVING COUNT(*) > 0;
+
+    IF @listed = 0
+        THROW 51401, N'No active Optima company database matches this request.', 1;
+
+    -- Step 2: work this operation finished before is only reported again.
+    IF EXISTS (
+        SELECT 1 FROM agent.deduction_call
+        WHERE operation_id = @operation_id AND deduction_id = @deduction_id
+          AND status IN ('Succeeded', 'AlreadyExists')
+    )
+    BEGIN
+        SELECT database_name, status, attempt, optima_employee_id, optima_addition_id, warning_codes, error_number,
+            error_procedure
+        FROM agent.deduction_call
+        WHERE operation_id = @operation_id AND deduction_id = @deduction_id;
+        RETURN;
+    END;
+
+    DECLARE
+        @status varchar(20) = NULL,
+        @employee_row_id int = NULL,
+        @addition_id int = NULL,
+        @warning_codes nvarchar(400) = NULL,
+        @error_number int = NULL,
+        @error_procedure sysname = NULL,
+        @error_line int = NULL,
+        @execute nvarchar(300) = QUOTENAME(@database_name) + N'.sys.sp_executesql',
+        @key_text varchar(36) = CONVERT(varchar(36), @optima_key),
+        @import_row_id nvarchar(36) = CONVERT(nvarchar(36), @employee_id),
+        -- Format 120 is what Comarch's CDN.ImportDataConvertToDatetime reads.
+        @valid_from varchar(24) = CONVERT(varchar(24), DATEFROMPARTS(@year, @month, 1), 120),
+        @valid_to varchar(24) = CONVERT(varchar(24), EOMONTH(DATEFROMPARTS(@year, @month, 1)), 120),
+        @value decimal(15, 2) = CONVERT(decimal(15, 2), @amount);
+
+    /*
+    What runs on the company database (step 4). XACT_ABORT makes any error roll the whole transaction back. Comarch's
+    procedures raise errors without RETURN in places, which is safe only because the caller's TRY stops at the first.
+    @status stays NULL when both rows were written.
+    */
+    DECLARE @add_sql nvarchar(max) = N'
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+
+-- 4a. UPDLOCK, HOLDLOCK keeps the key locked until COMMIT, so two calls with one key cannot both pass this check.
+SELECT @addition_id = h.DOH_DodId, @employee_row_id = d.DOD_PraId
+FROM CDN.DodatkiHist AS h WITH (UPDLOCK, HOLDLOCK)
+JOIN CDN.Dodatki AS d ON d.DOD_DodId = h.DOH_DodId
+WHERE h.DOH_ImportRowId = @key_text;
+
+IF @addition_id IS NOT NULL
+BEGIN
+    SET @status = ''AlreadyExists'';
+    COMMIT TRANSACTION;
+    RETURN;
+END;
+
+-- 4b. Ambit''s id decides. The acronym also finds a person imported from Ambit''s file, which Optima gave its own id;
+-- that match is reported, since it may be a different person.
+DECLARE @row_id nvarchar(36) = NULL;
+SELECT TOP (1) @employee_row_id = PRA_PraId, @row_id = PRA_ImportRowId
+FROM CDN.PracKod
+WHERE PRA_ImportRowId = @import_row_id OR PRA_Kod = @employee_code
+ORDER BY CASE WHEN PRA_ImportRowId = @import_row_id THEN 0 ELSE 1 END;
+
+IF @employee_row_id IS NULL
+BEGIN
+    SET @status = ''EmployeeNotFound'';
+    COMMIT TRANSACTION;
+    RETURN;
+END;
+
+IF ISNULL(@row_id, N'''') <> @import_row_id
+    SET @warning_codes = N''MATCHED_BY_ACRONYM_ONLY'';
+
+-- 4c. Comarch''s procedure finds the component by its import ids, so they are read here from its id.
+DECLARE @name nvarchar(40) = NULL, @component_row_id varchar(36) = NULL, @component_row_id2 varchar(36) = NULL;
+SELECT @name = CONVERT(nvarchar(40), TWP_Nazwa), @component_row_id = TWP_ImportRowId,
+    @component_row_id2 = TWP_ImportRowId2
+FROM CDN.TypWyplata
+WHERE TWP_TwpId = @component_id
+  AND TWP_AlgPotracenie = 1
+  AND ISNULL(TWP_Nieaktywny, 0) = 0
+  AND ISNULL(TWP_Wycofany, 0) = 0;
+
+IF @name IS NULL
+BEGIN
+    SET @status = ''ComponentNotFound'';
+    COMMIT TRANSACTION;
+    RETURN;
+END;
+
+-- 4d. The employee''s component, then its value for the month. Both rows carry the same key.
+DECLARE @warnings nvarchar(1000) = NULL, @history_id int = NULL;
+
+EXEC CDN.ImportDataDodatki
+    @PRA_PraId = @employee_row_id, @OnlyNew = 1, @ConfigDBName = N'''', @ServerName = N'''',
+    @DOD_ImportRowId = @key_text, @DOD_Nazwa = @name, @RDZ_ImportRowId = NULL, @DOD_Rodzaj = 0,
+    @DOD_Nieaktywny = 0, @DOD_Umowa = 0, @DOD_WliczChorWOkresie = 0, @ZrdId = N''AMBIT'', @OpeId = NULL,
+    @IdParam = @addition_id OUTPUT, @Warnings = @warnings OUTPUT;
+
+EXEC CDN.ImportDataDodatkiHist
+    @DOD_DodId = @addition_id, @OnlyNew = 1, @ConfigDBName = N'''', @ServerName = N'''',
+    @DOH_ImportRowId = @key_text, @TWP_ImportRowId = @component_row_id, @TWP_ImportRowId2 = @component_row_id2,
+    @DOH_ListaPlacSymbol = NULL, @DOH_Nazwa = @name,
+    @DOH_OkresOd_VCH = ''1900-01-01 00:00:00'', @DOH_OkresDo_VCH = ''2999-12-31 00:00:00'',
+    @DOH_WaznyOd_VCH = @valid_from, @DOH_WaznyDo_VCH = @valid_to,
+    @DOH_Wartosc1 = @value, @DOH_Wartosc2 = 0, @DOH_PozyczkaNr = N'''', @DOH_Opis = N'''',
+    @DOH_OddelegowanyWaluta = N'''', @DOH_PlatnoscZgodnaPrac = 1, @ZrdId = N''AMBIT'', @OpeId = NULL,
+    @IdParam = @history_id OUTPUT, @Warnings = @warnings OUTPUT;
+
+COMMIT TRANSACTION;';
+
+    BEGIN TRY
+        -- Step 3. The account has a user only where an administrator gave it one, so this is the real boundary.
+        IF ISNULL(HAS_DBACCESS(@database_name), 0) = 0
+            SET @status = 'NoAccess';
+        ELSE
+        BEGIN
+            DECLARE @actual_tax_id nvarchar(400) = NULL;
+
+            -- `EXEC @execute` runs [company].sys.sp_executesql, so the SQL passed to it runs on that company's database.
+            EXEC @execute
+                N'SELECT @value = REPLACE(CONVERT(nvarchar(400), Fir_Wartosc), N''-'', N'''') FROM CDN.Firma WHERE Fir_Numer = 1101;',
+                N'@value nvarchar(400) OUTPUT',
+                @value = @actual_tax_id OUTPUT;
+
+            -- Guards against a database that is not the company the list says it is.
+            IF @tax_id IS NOT NULL AND ISNULL(@actual_tax_id, N'') <> @tax_id
+                THROW 51501, N'The tax number in this database differs from Optima''s list.', 1;
+
+            -- Step 4, described where @add_sql is declared.
+            EXEC @execute @add_sql,
+                N'@key_text varchar(36), @import_row_id nvarchar(36), @employee_code nvarchar(20), @component_id int,
+                  @valid_from varchar(24), @valid_to varchar(24), @value decimal(15, 2),
+                  @status varchar(20) OUTPUT, @employee_row_id int OUTPUT, @addition_id int OUTPUT,
+                  @warning_codes nvarchar(400) OUTPUT',
+                @key_text = @key_text, @import_row_id = @import_row_id, @employee_code = @employee_code,
+                @component_id = @optima_component_id, @valid_from = @valid_from, @valid_to = @valid_to,
+                @value = @value, @status = @status OUTPUT, @employee_row_id = @employee_row_id OUTPUT,
+                @addition_id = @addition_id OUTPUT, @warning_codes = @warning_codes OUTPUT;
+
+            SET @status = ISNULL(@status, 'Succeeded');
+        END;
+    END TRY
+    BEGIN CATCH
+        -- Only the numbers are kept: the message can carry Optima's data. Nothing is rethrown.
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SELECT
+            @status = 'Failed',
+            @error_number = ERROR_NUMBER(),
+            @error_procedure = ERROR_PROCEDURE(),
+            @error_line = ERROR_LINE(),
+            @addition_id = NULL,
+            @warning_codes = NULL;
+    END CATCH;
+
+    -- Step 5: the record of this attempt. A row from an earlier attempt that did not finish the work is replaced.
+    UPDATE agent.deduction_call
+    SET status = @status, attempt = attempt + 1, database_name = @database_name, employee_id = @employee_id,
+        optima_key = @optima_key, period_year = @year, period_month = @month,
+        optima_component_id = @optima_component_id, amount = @value, optima_employee_id = @employee_row_id,
+        optima_addition_id = @addition_id, warning_codes = @warning_codes, error_number = @error_number,
+        error_procedure = @error_procedure, error_line = @error_line, started_at = SYSUTCDATETIME(),
+        finished_at = SYSUTCDATETIME()
+    WHERE operation_id = @operation_id AND deduction_id = @deduction_id;
+
+    IF @@ROWCOUNT = 0
+        INSERT agent.deduction_call
+            (operation_id, deduction_id, database_name, employee_id, optima_key, period_year, period_month,
+             optima_component_id, amount, status, optima_employee_id, optima_addition_id, warning_codes,
+             error_number, error_procedure, error_line, finished_at)
+        VALUES
+            (@operation_id, @deduction_id, @database_name, @employee_id, @optima_key, @year, @month,
+             @optima_component_id, @value, @status, @employee_row_id, @addition_id, @warning_codes,
+             @error_number, @error_procedure, @error_line, SYSUTCDATETIME());
+
+    SELECT database_name, status, attempt, optima_employee_id, optima_addition_id, warning_codes, error_number,
+        error_procedure
+    FROM agent.deduction_call
+    WHERE operation_id = @operation_id AND deduction_id = @deduction_id;
 END;
 GO
 

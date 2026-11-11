@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Ambit.Agent.Core.Deductions;
 using Ambit.Agent.Core.Employees;
 using Ambit.Agent.Core.Operations;
 using Ambit.Agent.Infrastructure.AmbitApi;
@@ -67,6 +68,11 @@ public sealed class OperationPollerTests
             CancellationToken cancellationToken
         ) => Task.FromResult<EmployeesWork?>(null);
 
+        public Task<DeductionsWork?> GetDeductionsAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => Task.FromResult<DeductionsWork?>(null);
+
         public Task<AgentOperation?> ClaimAsync(CancellationToken cancellationToken) =>
             ClaimFailure is null ? Task.FromResult(Next) : throw ClaimFailure;
 
@@ -90,6 +96,7 @@ public sealed class OperationPollerTests
             new OperationRunner(
                 reader,
                 new NoEmployees(),
+                new NoDeductions(),
                 api,
                 Options.Create(new WriteOptions()),
                 TimeProvider.System

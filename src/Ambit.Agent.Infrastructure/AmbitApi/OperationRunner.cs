@@ -1,3 +1,4 @@
+using Ambit.Agent.Core.Deductions;
 using Ambit.Agent.Core.Employees;
 using Ambit.Agent.Core.Operations;
 using Microsoft.Extensions.Options;
@@ -8,6 +9,7 @@ namespace Ambit.Agent.Infrastructure.AmbitApi;
 public sealed class OperationRunner(
     IPayrollComponentReader components,
     IEmployeeWriter employees,
+    IDeductionWriter deductions,
     IAmbitApiClient api,
     IOptions<WriteOptions> writes,
     TimeProvider clock
@@ -16,6 +18,8 @@ public sealed class OperationRunner(
     private const string Added = "Succeeded";
     private const string AlreadyExists = "AlreadyExists";
     private const string NoAccess = "NoAccess";
+    private const string EmployeeNotFound = "EmployeeNotFound";
+    private const string ComponentNotFound = "ComponentNotFound";
 
     public async Task<OperationResult> RunAsync(
         AgentOperation operation,
@@ -28,8 +32,109 @@ public sealed class OperationRunner(
                 cancellationToken
             ),
             OperationKinds.AddEmployees => await AddEmployeesAsync(operation, cancellationToken),
+            OperationKinds.ExportDeductions => await ExportDeductionsAsync(
+                operation,
+                cancellationToken
+            ),
             _ => Failure(operation, OperationLogCodes.UnsupportedKind),
         };
+
+    /// <summary>
+    /// ADR 0007. Each deduction is its own call of <c>app.deduction_add</c>, with its own transaction, so one refused
+    /// or failed does not stop the others. Its rows in Optima carry a key made from the deduction and the month, so a
+    /// month exported again is written once. The operation succeeds only when every deduction is there afterwards.
+    /// </summary>
+    private async Task<OperationResult> ExportDeductionsAsync(
+        AgentOperation operation,
+        CancellationToken cancellationToken
+    )
+    {
+        // Ambit never gives this kind to an agent that did not offer it; this guards a configuration changed in between.
+        if (!writes.Value.Enabled)
+            return Failure(operation, OperationLogCodes.WritesDisabled);
+
+        DeductionsWork? work;
+        try
+        {
+            work = await api.GetDeductionsAsync(operation.Id, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return Failure(operation, OperationLogCodes.ExecutionFailed);
+        }
+
+        if (work is null)
+            return Failure(operation, OperationLogCodes.DeductionsUnavailable);
+
+        var log = new List<OperationLogEntry>();
+        foreach (var deduction in work.Deductions)
+            log.Add(await AddDeductionAsync(operation, work, deduction, cancellationToken));
+
+        var done = log.All(e =>
+            e.Code is OperationLogCodes.DeductionAdded or OperationLogCodes.DeductionExists
+        );
+        var errorCode = done ? null : OperationLogCodes.DeductionsFailed;
+        return new OperationResult(operation.Attempt, done, errorCode, log);
+    }
+
+    private async Task<OperationLogEntry> AddDeductionAsync(
+        AgentOperation operation,
+        DeductionsWork work,
+        DeductionItem deduction,
+        CancellationToken cancellationToken
+    )
+    {
+        var databaseName = work.DatabaseName ?? "";
+        try
+        {
+            var result = await deductions.AddAsync(
+                new DeductionAddRequest(
+                    operation.Id,
+                    databaseName,
+                    work.Year,
+                    work.Month,
+                    deduction
+                ),
+                cancellationToken
+            );
+            return DeductionEntry(
+                result.Status switch
+                {
+                    Added => OperationLogCodes.DeductionAdded,
+                    AlreadyExists => OperationLogCodes.DeductionExists,
+                    NoAccess => OperationLogCodes.DatabaseNoAccess,
+                    EmployeeNotFound => OperationLogCodes.EmployeeNotFound,
+                    ComponentNotFound => OperationLogCodes.ComponentNotFound,
+                    _ => OperationLogCodes.DeductionFailed,
+                },
+                result.ErrorNumber,
+                result.WarningCodes
+            );
+        }
+        catch (DeductionRejectedException rejected)
+        {
+            return DeductionEntry(OperationLogCodes.DeductionRejected, rejected.Number);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return DeductionEntry(OperationLogCodes.DeductionFailed);
+        }
+
+        OperationLogEntry DeductionEntry(
+            string code,
+            int? errorNumber = null,
+            string? warnings = null
+        ) =>
+            new(
+                clock.GetUtcNow(),
+                code,
+                databaseName,
+                errorNumber,
+                EmployeeId: deduction.EmployeeId,
+                DeductionId: deduction.DeductionId,
+                WarningCodes: warnings
+            );
+    }
 
     /// <summary>
     /// ADR 0006. Each person is their own call of <c>app.employee_add</c>, with a transaction per company, so one person

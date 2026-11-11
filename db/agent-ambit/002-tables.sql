@@ -67,6 +67,45 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'ix_agent_employee_call_s
     CREATE INDEX ix_agent_employee_call_started_at ON agent.employee_call (started_at) INCLUDE (status);
 GO
 
+-- One row per operation and deduction (ADR 0007). The write itself is keyed in Optima, so this is the record of what
+-- each attempt found, not the guard against a duplicate. Holds ids, the period and the amount, no names.
+IF OBJECT_ID(N'agent.deduction_call') IS NULL
+CREATE TABLE agent.deduction_call
+(
+    operation_id uniqueidentifier NOT NULL,
+    deduction_id uniqueidentifier NOT NULL,
+    database_name sysname NOT NULL,
+    employee_id uniqueidentifier NOT NULL,
+    optima_key uniqueidentifier NOT NULL,
+    period_year smallint NOT NULL,
+    period_month tinyint NOT NULL,
+    optima_component_id int NOT NULL,
+    amount decimal(15, 2) NOT NULL,
+    status varchar(20) NOT NULL
+        CONSTRAINT ck_agent_deduction_call_status
+            CHECK (status IN ('Succeeded', 'AlreadyExists', 'NoAccess', 'EmployeeNotFound', 'ComponentNotFound',
+                              'Failed')),
+    attempt int NOT NULL
+        CONSTRAINT df_agent_deduction_call_attempt DEFAULT (1),
+    optima_employee_id int NULL,
+    optima_addition_id int NULL,
+    warning_codes nvarchar(400) NULL,
+    error_number int NULL,
+    error_procedure sysname NULL,
+    error_line int NULL,
+    started_at datetime2(3) NOT NULL
+        CONSTRAINT df_agent_deduction_call_started_at DEFAULT (SYSUTCDATETIME()),
+    finished_at datetime2(3) NULL,
+    CONSTRAINT pk_agent_deduction_call PRIMARY KEY (operation_id, deduction_id)
+);
+GO
+
+-- For the retention purge.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'ix_agent_deduction_call_started_at'
+               AND object_id = OBJECT_ID(N'agent.deduction_call'))
+    CREATE INDEX ix_agent_deduction_call_started_at ON agent.deduction_call (started_at);
+GO
+
 -- The Worker's own log. Callers must not put personal data in the message.
 IF OBJECT_ID(N'agent.log_entry') IS NULL
 CREATE TABLE agent.log_entry
