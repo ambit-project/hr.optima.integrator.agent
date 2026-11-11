@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Ambit.Agent.Core.Employees;
 using Ambit.Agent.Core.Operations;
 using Ambit.Agent.Infrastructure.AmbitApi;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -44,6 +45,14 @@ public sealed class OperationPollerTests
         }
     }
 
+    private sealed class NoEmployees : IEmployeeWriter
+    {
+        public Task<IReadOnlyList<EmployeeAddResult>> AddAsync(
+            EmployeeAddRequest request,
+            CancellationToken cancellationToken
+        ) => throw new InvalidOperationException("A read writes nobody.");
+    }
+
     private sealed class FakeApi : IAmbitApiClient
     {
         public AgentOperation? Next { get; init; }
@@ -52,6 +61,11 @@ public sealed class OperationPollerTests
         public List<OperationResult> Reports { get; } = [];
         public int ReportCalls { get; private set; }
         public bool Accept { get; init; } = true;
+
+        public Task<EmployeesWork?> GetEmployeesAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => Task.FromResult<EmployeesWork?>(null);
 
         public Task<AgentOperation?> ClaimAsync(CancellationToken cancellationToken) =>
             ClaimFailure is null ? Task.FromResult(Next) : throw ClaimFailure;
@@ -73,7 +87,13 @@ public sealed class OperationPollerTests
     private static OperationPoller Poller(FakeApi api, FakeReader reader) =>
         new(
             api,
-            new OperationRunner(reader, TimeProvider.System),
+            new OperationRunner(
+                reader,
+                new NoEmployees(),
+                api,
+                Options.Create(new WriteOptions()),
+                TimeProvider.System
+            ),
             Options.Create(new AmbitApiOptions { RetrySeconds = 1 }),
             TimeProvider.System,
             NullLogger<OperationPoller>.Instance
@@ -281,8 +301,11 @@ public sealed class OperationPollerTests
         }
     }
 
-    private static HttpAmbitApiClient Client(Handler handler) =>
-        new(new HttpClient(handler) { BaseAddress = new Uri("https://api.example/") });
+    private static HttpAmbitApiClient Client(Handler handler, bool writes = false) =>
+        new(
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.example/") },
+            Options.Create(new WriteOptions { Enabled = writes })
+        );
 
     [Fact]
     public async Task No_content_means_no_work()
@@ -365,5 +388,118 @@ public sealed class OperationPollerTests
         );
 
         Assert.Equal(valid, result.Succeeded);
+    }
+}
+
+public sealed class AmbitEmployeesContractTests
+{
+    private sealed class Handler(HttpStatusCode status, string body = "") : HttpMessageHandler
+    {
+        public HttpRequestMessage? Request { get; private set; }
+        public string? Sent { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            Request = request;
+            Sent = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(status)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
+    private static HttpAmbitApiClient Client(Handler handler, bool writes) =>
+        new(
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.example/") },
+            Options.Create(new WriteOptions { Enabled = writes })
+        );
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task A_claim_offers_adding_people_only_with_writes_on(bool writes, bool offered)
+    {
+        var handler = new Handler(HttpStatusCode.NoContent);
+
+        await Client(handler, writes).ClaimAsync(CancellationToken.None);
+
+        var kinds = JsonDocument
+            .Parse(handler.Sent!)
+            .RootElement.GetProperty("supportedKinds")
+            .EnumerateArray()
+            .Select(k => k.GetString())
+            .ToList();
+        Assert.Equal(offered, kinds.Contains(OperationKinds.AddEmployees));
+        Assert.Contains(OperationKinds.ReadPayrollComponents, kinds);
+    }
+
+    [Fact]
+    public async Task The_people_are_read_from_ambits_camel_case()
+    {
+        var operationId = Guid.NewGuid();
+        var handler = new Handler(
+            HttpStatusCode.OK,
+            """
+            {
+              "databaseName": "CDN_Ambit",
+              "employees": [
+                {
+                  "employeeId": "b0000000-0000-4000-8000-000000000001",
+                  "employeeCode": "W0000000000000000001",
+                  "lastName": "Bondarenko",
+                  "firstName": "Olena",
+                  "dateOfBirth": "1990-05-12",
+                  "pesel": "90051212345",
+                  "citizenshipCode": "UA",
+                  "documentKind": "Passport",
+                  "documentNumber": "FX123456",
+                  "positionName": "Monter",
+                  "startsOn": "2026-03-01"
+                }
+              ]
+            }
+            """
+        );
+
+        var work = await Client(handler, true)
+            .GetEmployeesAsync(operationId, CancellationToken.None);
+
+        Assert.EndsWith(
+            $"/api/optima/agent/operations/{operationId}/employees",
+            handler.Request!.RequestUri!.ToString()
+        );
+        Assert.Equal("CDN_Ambit", work!.DatabaseName);
+        var person = Assert.Single(work.Employees);
+        Assert.Equal(Guid.Parse("b0000000-0000-4000-8000-000000000001"), person.EmployeeId);
+        Assert.Equal("Bondarenko", person.LastName);
+        Assert.Equal(new DateOnly(1990, 5, 12), person.DateOfBirth);
+        Assert.Equal("90051212345", person.Pesel);
+        Assert.Equal("Passport", person.DocumentKind);
+        Assert.Equal(new DateOnly(2026, 3, 1), person.StartsOn);
+        Assert.Null(person.OperationId);
+    }
+
+    [Fact]
+    public async Task People_no_longer_handed_out_are_null()
+    {
+        var work = await Client(new Handler(HttpStatusCode.NotFound), true)
+            .GetEmployeesAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Null(work);
+    }
+
+    [Fact]
+    public async Task Ambit_failing_while_handing_out_people_can_be_tried_again()
+    {
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            Client(new Handler(HttpStatusCode.ServiceUnavailable), true)
+                .GetEmployeesAsync(Guid.NewGuid(), CancellationToken.None)
+        );
     }
 }
