@@ -2,9 +2,9 @@
 .SYNOPSIS
     Builds the client's installer into artifacts/installer. Needs Windows, .NET SDK 10, Flutter and Inno Setup 6.
 .EXAMPLE
-    ./installer/build.ps1 -Version 0.2.0
+    ./installer/build.ps1 -Version 0.3.0
 #>
-param([string]$Version = '0.2.0')
+param([string]$Version = '0.3.0')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent

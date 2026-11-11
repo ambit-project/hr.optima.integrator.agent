@@ -9,6 +9,7 @@ the results.
 - `db/agent-ambit` - the agent's database scripts, embedded in `src/Ambit.Agent.Setup`.
 - `installer` - the client's installer (`docs/adr/0004-client-installer.md`).
 - `docs/adr` - decisions.
+- `docs/features.md` - what the agent does today and what is not done yet.
 
 Status: stage 0. So far the Worker answers `status`, `sql.identity` and, when `Writes:Enabled` is set, `employee.add` (also as Ambit's `AddEmployees` operation, ADR 0006)
 over IPC. With a token from Ambit, given to the installer (`docs/adr/0005-ambit-connection-in-the-installer.md`), it also
