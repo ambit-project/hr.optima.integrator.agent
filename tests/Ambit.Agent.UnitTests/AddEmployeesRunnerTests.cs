@@ -1,3 +1,4 @@
+using Ambit.Agent.Core.Deductions;
 using Ambit.Agent.Core.Employees;
 using Ambit.Agent.Core.Operations;
 using Ambit.Agent.Infrastructure.AmbitApi;
@@ -29,6 +30,11 @@ public sealed class AddEmployeesRunnerTests
             Guid operationId,
             CancellationToken cancellationToken
         ) => failure is null ? Task.FromResult(work) : throw failure;
+
+        public Task<DeductionsWork?> GetDeductionsAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => Task.FromResult<DeductionsWork?>(null);
 
         public Task<bool> ReportAsync(
             Guid operationId,
@@ -70,6 +76,7 @@ public sealed class AddEmployeesRunnerTests
         new(
             new NoReader(),
             writer,
+            new NoDeductions(),
             api,
             Options.Create(new WriteOptions { Enabled = writes }),
             TimeProvider.System

@@ -75,6 +75,7 @@ public sealed class PayrollComponentsEndToEndTests
             new OperationRunner(
                 new SqlPayrollComponentReader(sql),
                 new SqlEmployeeWriter(sql),
+                new SqlDeductionWriter(sql),
                 client,
                 Options.Create(new WriteOptions()),
                 TimeProvider.System

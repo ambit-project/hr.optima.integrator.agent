@@ -1,3 +1,4 @@
+using Ambit.Agent.Core.Deductions;
 using Ambit.Agent.Core.Diagnostics;
 using Ambit.Agent.Core.Employees;
 using Ambit.Agent.Core.Operations;
@@ -27,6 +28,7 @@ builder.Services.AddHostedService<AgentDatabaseMaintenance>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ISqlDiagnostics, SqlDiagnostics>();
 builder.Services.AddSingleton<IEmployeeWriter, SqlEmployeeWriter>();
+builder.Services.AddSingleton<IDeductionWriter, SqlDeductionWriter>();
 builder.Services.AddSingleton<IpcDispatcher>();
 builder.Services.AddHostedService<IpcServer>();
 

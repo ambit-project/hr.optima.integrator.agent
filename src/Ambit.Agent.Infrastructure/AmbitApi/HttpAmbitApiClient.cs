@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Ambit.Agent.Core.Deductions;
 using Ambit.Agent.Core.Employees;
 using Ambit.Agent.Core.Operations;
 using Microsoft.Extensions.Options;
@@ -45,6 +46,22 @@ public sealed class HttpAmbitApiClient(HttpClient http, IOptions<WriteOptions> w
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<EmployeesWork>(Json, cancellationToken);
+    }
+
+    public async Task<DeductionsWork?> GetDeductionsAsync(
+        Guid operationId,
+        CancellationToken cancellationToken
+    )
+    {
+        using var response = await http.GetAsync(
+            $"api/optima/agent/operations/{operationId}/deductions",
+            cancellationToken
+        );
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DeductionsWork>(Json, cancellationToken);
     }
 
     public async Task<bool> ReportAsync(
