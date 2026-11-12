@@ -1,26 +1,39 @@
-# Ambit Optima Agent
+# Ambit Optima Integrator
 
-A local service that connects Ambit with a client's SQL Server and Comarch ERP Optima. It is not an AI agent: it
-fetches assigned tasks from Ambit (by default `https://app.ambitsys.eu`), runs them under controlled rules and reports
-the results.
+A Windows service that connects an HR and payroll web application with Comarch ERP Optima running on a client's own
+SQL Server. It asks the web application for work, carries it out in Optima under narrow SQL Server rights, and reports
+the result. It opens no port.
 
-- `src/Ambit.Agent.Worker` - the Windows Service; it keeps running when the UI is closed.
-- `src/ambit-agent-desktop` - the Flutter UI, for administration and diagnostics only; no SQL logic in Dart.
-- `db/agent-ambit` - the agent's database scripts, embedded in `src/Ambit.Agent.Setup`.
-- `installer` - the client's installer (`docs/adr/0004-client-installer.md`).
-- `docs/adr` - decisions.
-- `docs/features.md` - what the agent does today and what is not done yet.
+What it does today:
 
-Status: stage 0. So far the Worker answers `status`, `sql.identity` and, when `Writes:Enabled` is set, `employee.add` (also as Ambit's `AddEmployees` operation, ADR 0006)
-over IPC. With a token from Ambit, given to the installer (`docs/adr/0005-ambit-connection-in-the-installer.md`), it also
-takes operations from Ambit and reads Optima's payroll components (`docs/adr/0003-operations-from-ambit.md`, with the
-HTTP contract). With writes on, it also gives employees a month's deductions as Ambit's `ExportDeductions` operation
-(`docs/adr/0007-exporting-deductions-from-ambit.md`). Ambit's side of that contract is not finished yet.
+- reads the payroll components (deductions and allowances) each Optima company defines,
+- adds employees to one company or to every active company,
+- writes a month's deductions to employees in one company.
+
+Writes are off by default and are switched on locally, on the client's machine.
+
+## Repository
+
+| Path | What it is |
+| --- | --- |
+| `src/Ambit.Optima.Integrator.Worker` | The Windows service. It keeps running when the UI is closed. |
+| `src/Ambit.Optima.Integrator.Core` | Operations, requests, validation and the interfaces the other projects implement. |
+| `src/Ambit.Optima.Integrator.SqlServer` | Data access with Dapper: Optima's companies, employees, deductions, payroll components, the log. |
+| `src/Ambit.Optima.Integrator.Infrastructure` | The HTTP client of the HR application and the loop that claims and runs operations. |
+| `src/Ambit.Optima.Integrator.Ipc` | The local channel between the service and the desktop UI (named pipe, Unix socket in development). |
+| `src/Ambit.Optima.Integrator.Setup` | Run by the installer: database migrations, SQL Server rights, service registration, settings. |
+| `src/ambit-optima-integrator-desktop` | The Flutter UI, for status and diagnostics only. It has no SQL logic. |
+| `db/migrations` | Schema of the integrator's own database, applied once each by DbUp. |
+| `db/grants` | Rights of the service account, applied on every install. |
+| `installer` | The Inno Setup installer. |
+| `docs` | [Architecture](docs/architecture.md), [the HR application's API](docs/hr-application-api.md), [security](docs/security.md), [what is written to Optima](docs/optima.md). |
 
 ## Requirements
 
 - .NET SDK 10 (see `global.json`), Flutter 3.47
+- Docker, for the integration tests that start SQL Server in a container
 - JetBrains `jb` for the pre-push hook: `dotnet tool install -g JetBrains.ReSharper.GlobalTools`
+- Inno Setup 6, to build the installer on Windows
 
 ## Getting started
 
@@ -33,13 +46,30 @@ dotnet test
 On Linux, for development, the Worker listens on a Unix socket in `$XDG_RUNTIME_DIR`:
 
 ```bash
-dotnet run --project src/Ambit.Agent.Worker
-cd src/ambit-agent-desktop && flutter run -d linux
+dotnet run --project src/Ambit.Optima.Integrator.Worker
+cd src/ambit-optima-integrator-desktop && flutter run -d linux
 ```
 
-Windows Authentication needs Windows. The `windows-service-spike` CI job installs the real service with SQL Server
-Express and checks it from C# and Dart. To run those tests on a test machine, set `AMBIT_SPIKE_EXPECTED_LOGIN`.
-To run the agent against real Optima data with Ambit's answers faked, set `AMBIT_TEST_SQL_SERVER`.
+## Tests
+
+- `tests/Ambit.Optima.Integrator.UnitTests` - no external dependencies.
+- `tests/Ambit.Optima.Integrator.IntegrationTests`:
+  - `FakeOptimaTests` start SQL Server 2022 in Docker, apply the migrations and run the data access code against a
+    stand-in for Optima's schema (`FakeOptima/*.sql`). Skipped when Docker is not available.
+  - Tests against a real Optima instance run only when their variables are set: `AMBIT_TEST_SQL_SERVER` (reads),
+    `AMBIT_SPIKE_EMPLOYEE_DATABASE` (writes to that test company), `AMBIT_SPIKE_EXPECTED_LOGIN` (an installed service).
+
+## Building the installer
+
+```powershell
+./installer/build.ps1 -Version 0.4.0
+```
+
+The result is `AmbitOptimaIntegratorSetup-<version>.exe`. Silent install:
+
+```text
+/VERYSILENT /SUPPRESSMSGBOXES /SERVER=.\OPTIMA /FIRMS=CDN_A,CDN_B [/CONFIGDB=...] [/AMBITURL=...] [/TOKENFILE=...]
+```
 
 ## Formatting and hooks
 
@@ -49,6 +79,10 @@ dotnet csharpier format .
 ```
 
 - pre-commit: `csharpier check`, `dotnet build`
-- pre-push: `dotnet build`, `scripts/inspect-code.sh`; run `dotnet test` by hand before a PR
+- pre-push: `dotnet build`, `scripts/inspect-code.sh`
 
 Switch off with `HUSKY=0`.
+
+## License
+
+[MIT](LICENSE). Comarch ERP Optima is a product of Comarch S.A.; this project is not affiliated with Comarch.

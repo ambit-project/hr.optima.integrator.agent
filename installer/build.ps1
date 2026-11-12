@@ -2,9 +2,9 @@
 .SYNOPSIS
     Builds the client's installer into artifacts/installer. Needs Windows, .NET SDK 10, Flutter and Inno Setup 6.
 .EXAMPLE
-    ./installer/build.ps1 -Version 0.3.0
+    ./installer/build.ps1 -Version 0.4.0
 #>
-param([string]$Version = '0.3.0')
+param([string]$Version = '0.4.0')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -18,12 +18,12 @@ function Invoke-Checked([scriptblock]$Command) {
 
 if (Test-Path $output) { Remove-Item $output -Recurse -Force }
 
-Invoke-Checked { dotnet publish "$root\src\Ambit.Agent.Worker" -c Release -r win-x64 --self-contained true -o "$payload\worker" -p:Version=$Version }
-Invoke-Checked { dotnet publish "$root\src\Ambit.Agent.Setup" -c Release -r win-x64 --self-contained true -o "$payload\setup" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none }
+Invoke-Checked { dotnet publish "$root\src\Ambit.Optima.Integrator.Worker" -c Release -r win-x64 --self-contained true -o "$payload\worker" -p:Version=$Version }
+Invoke-Checked { dotnet publish "$root\src\Ambit.Optima.Integrator.Setup" -c Release -r win-x64 --self-contained true -o "$payload\setup" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none }
 
-Push-Location "$root\src\ambit-agent-desktop"
+Push-Location "$root\src\ambit-optima-integrator-desktop"
 try { Invoke-Checked { flutter build windows --release --build-name=$Version } } finally { Pop-Location }
-Copy-Item "$root\src\ambit-agent-desktop\build\windows\x64\runner\Release" "$payload\desktop" -Recurse
+Copy-Item "$root\src\ambit-optima-integrator-desktop\build\windows\x64\runner\Release" "$payload\desktop" -Recurse
 
 # A clean Windows Server may not have the Visual C++ runtime the Flutter app needs, so it travels next to the app.
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -33,5 +33,5 @@ $runtime = & $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.
 if (-not $runtime) { throw 'The Visual C++ redistributable files were not found.' }
 Copy-Item "$runtime\msvcp140.dll", "$runtime\vcruntime140.dll", "$runtime\vcruntime140_1.dll" "$payload\desktop"
 
-Invoke-Checked { & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DPayloadDir=$payload" "/DAppVersion=$Version" "$PSScriptRoot\AmbitOptimaAgent.iss" }
+Invoke-Checked { & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DPayloadDir=$payload" "/DAppVersion=$Version" "$PSScriptRoot\AmbitOptimaIntegrator.iss" }
 Get-ChildItem $output -Filter *.exe | ForEach-Object { "$($_.FullName) ($([math]::Round($_.Length / 1MB)) MB)" }

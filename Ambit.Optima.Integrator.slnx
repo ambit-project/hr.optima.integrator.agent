@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Ambit.Optima.Integrator.Core/Ambit.Optima.Integrator.Core.csproj" />
+    <Project Path="src/Ambit.Optima.Integrator.Infrastructure/Ambit.Optima.Integrator.Infrastructure.csproj" />
+    <Project Path="src/Ambit.Optima.Integrator.Ipc/Ambit.Optima.Integrator.Ipc.csproj" />
+    <Project Path="src/Ambit.Optima.Integrator.SqlServer/Ambit.Optima.Integrator.SqlServer.csproj" />
+    <Project Path="src/Ambit.Optima.Integrator.Setup/Ambit.Optima.Integrator.Setup.csproj" />
+    <Project Path="src/Ambit.Optima.Integrator.Worker/Ambit.Optima.Integrator.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ambit.Optima.Integrator.IntegrationTests/Ambit.Optima.Integrator.IntegrationTests.csproj" />
+    <Project Path="tests/Ambit.Optima.Integrator.UnitTests/Ambit.Optima.Integrator.UnitTests.csproj" />
+  </Folder>
+</Solution>

@@ -5,4 +5,4 @@ obj/
 *.csproj
 *.props
 *.targets
-src/ambit-agent-desktop/
+src/ambit-optima-integrator-desktop/
