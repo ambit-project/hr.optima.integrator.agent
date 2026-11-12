@@ -30,7 +30,7 @@ public static class AmbitConnectionCheck
             {
                 HttpStatusCode.NoContent => null,
                 HttpStatusCode.Unauthorized => "Ambit refused the token: unknown or revoked.",
-                // Anything else, a 200 included, means this address is not an Ambit that knows the agent.
+                // Anything else, a 200 included, means this address is not an Ambit that knows the integrator.
                 _ =>
                     $"The address answered {(int)response.StatusCode} instead of accepting the token.",
             };

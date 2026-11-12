@@ -5,7 +5,7 @@ using JetBrains.Annotations;
 
 namespace Ambit.Optima.Integrator.Core.Operations;
 
-/// <summary>What Ambit asks the agent to do. The id stays the same when an operator tries again.</summary>
+/// <summary>What the HR application asks the integrator to do. The id stays the same when an operator tries again.</summary>
 [UsedImplicitly(ImplicitUseTargetFlags.Members)] // Read from JSON.
 public sealed record AgentOperation(Guid Id, string Kind, int Attempt);
 
@@ -13,10 +13,10 @@ public static class OperationKinds
 {
     public const string ReadPayrollComponents = "ReadPayrollComponents";
 
-    /// <summary>ADR 0006: adds Ambit's people to Optima. Offered only when writes are switched on locally.</summary>
+    /// <summary>Adds the HR application's employees to Optima. Offered only when writes are switched on locally.</summary>
     public const string AddEmployees = "AddEmployees";
 
-    /// <summary>ADR 0007: gives employees one month's deductions. Offered only when writes are switched on locally.</summary>
+    /// <summary>Gives employees one month's deductions. Offered only when writes are switched on locally.</summary>
     public const string ExportDeductions = "ExportDeductions";
 
     private static readonly IReadOnlyList<string> Supported = [ReadPayrollComponents];
@@ -59,7 +59,7 @@ public static class OperationLogCodes
 }
 
 /// <summary>
-/// One step of an operation's log. <see cref="WarningCodes"/> carries the agent's own codes, such as
+/// One step of an operation's log. <see cref="WarningCodes"/> carries the integrator's own codes, such as
 /// <c>MATCHED_BY_ACRONYM_ONLY</c>.
 /// </summary>
 [UsedImplicitly(ImplicitUseTargetFlags.Members)] // Serialized for Ambit.
@@ -85,7 +85,7 @@ public sealed record OperationResult(
 );
 
 /// <summary>
-/// ADR 0006: the people of an AddEmployees operation, as Ambit gives them while the agent holds it. Each one reads into
+/// The people of an AddEmployees operation, as the HR application gives them while the integrator holds it. Each one reads into
 /// <see cref="EmployeeAddRequest"/>, whose names Ambit's JSON uses.
 /// </summary>
 [UsedImplicitly(ImplicitUseTargetFlags.Members)] // Read from JSON.
@@ -98,7 +98,7 @@ public sealed record EmployeesWork(
     public override string ToString() => nameof(EmployeesWork);
 
     /// <summary>
-    /// The key of one person's call in <c>app.employee_add</c>, which keeps one row per call and company: the same for
+    /// The key of one person's call in <c>integrator.employee_call</c>, which keeps one row per call and company: the same for
     /// every attempt of the operation, so a retry sees what an earlier attempt wrote, and different per person.
     /// </summary>
     public static Guid CallId(Guid operationId, Guid employeeId)

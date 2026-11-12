@@ -454,7 +454,7 @@ public sealed class AmbitEmployeesContractTests
             HttpStatusCode.OK,
             """
             {
-              "databaseName": "CDN_Ambit",
+              "databaseName": "CDN_Firma",
               "employees": [
                 {
                   "employeeId": "b0000000-0000-4000-8000-000000000001",
@@ -481,7 +481,7 @@ public sealed class AmbitEmployeesContractTests
             $"/api/optima/agent/operations/{operationId}/employees",
             handler.Request!.RequestUri!.ToString()
         );
-        Assert.Equal("CDN_Ambit", work!.DatabaseName);
+        Assert.Equal("CDN_Firma", work!.DatabaseName);
         var person = Assert.Single(work.Employees);
         Assert.Equal(Guid.Parse("b0000000-0000-4000-8000-000000000001"), person.EmployeeId);
         Assert.Equal("Bondarenko", person.LastName);

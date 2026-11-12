@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ambit.Optima.Integrator.UnitTests;
 
-/// <summary>ADR 0007: one month's deductions of one company, one call each, every outcome a log code.</summary>
+/// <summary>One month's deductions of one company, one call each, every outcome a log code.</summary>
 public sealed class ExportDeductionsRunnerTests
 {
     private static readonly AgentOperation Export = new(
@@ -23,7 +23,7 @@ public sealed class ExportDeductionsRunnerTests
         new(id, Olena, "BONOLE1", 338, amount, "PLN");
 
     private static DeductionsWork Month(params DeductionItem[] items) =>
-        new("CDN_Ambit", 2026, 11, items);
+        new("CDN_Firma", 2026, 11, items);
 
     private sealed class FakeApi(DeductionsWork? work, Exception? failure = null) : IAmbitApiClient
     {
@@ -80,7 +80,7 @@ public sealed class ExportDeductionsRunnerTests
         string status,
         int? error = null,
         string? warnings = null
-    ) => new("CDN_Ambit", status, 1, 3, 2, warnings, error, null);
+    ) => new("CDN_Firma", status, 1, 3, 2, warnings, error, null);
 
     private static OperationRunner Runner(
         IAmbitApiClient api,
@@ -109,7 +109,7 @@ public sealed class ExportDeductionsRunnerTests
         Assert.Equal(2, result.Attempt);
         Assert.Equal([Housing, Meals], writer.Calls.Select(c => c.Deduction.DeductionId));
         Assert.Equal(
-            [(Export.Id, "CDN_Ambit", 2026, 11), (Export.Id, "CDN_Ambit", 2026, 11)],
+            [(Export.Id, "CDN_Firma", 2026, 11), (Export.Id, "CDN_Firma", 2026, 11)],
             writer.Calls.Select(c => (c.OperationId, c.DatabaseName, c.Year, c.Month))
         );
         Assert.Equal(

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'agent_status.dart';
 import 'ipc/agent_client.dart';
 
-/// The one screen of the UI: is the agent working, and if not, what to do about it.
+/// The one screen of the UI: is the integrator working, and if not, what to do about it.
 class StatusPage extends StatefulWidget {
   const StatusPage({
     super.key,

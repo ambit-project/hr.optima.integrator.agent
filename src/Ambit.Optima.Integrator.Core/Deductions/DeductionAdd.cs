@@ -4,7 +4,7 @@ using JetBrains.Annotations;
 namespace Ambit.Optima.Integrator.Core.Deductions;
 
 /// <summary>
-/// ADR 0007: the deductions of an ExportDeductions operation, as Ambit gives them while the agent holds it. One company,
+/// The deductions of an ExportDeductions operation, as the HR application gives them while the integrator holds it. One company,
 /// because a component's id means something only there, and one month.
 /// </summary>
 [UsedImplicitly(ImplicitUseTargetFlags.Members)] // Read from JSON.
@@ -52,7 +52,7 @@ public sealed record DeductionAddResult(
     string? ErrorProcedure
 );
 
-/// <summary>One deduction for <c>app.deduction_add</c>.</summary>
+/// <summary>One deduction to write to one company.</summary>
 public sealed record DeductionAddRequest(
     Guid OperationId,
     string DatabaseName,
@@ -61,7 +61,7 @@ public sealed record DeductionAddRequest(
     DeductionItem Deduction
 );
 
-/// <summary>The procedure refused the deduction as a whole, and its message is safe to show.</summary>
+/// <summary>The deduction was refused as a whole, before the company was touched; the message is safe to show.</summary>
 public sealed class DeductionRejectedException(int number, string message) : Exception(message)
 {
     public int Number { get; } = number;

@@ -5,7 +5,7 @@ namespace Ambit.Optima.Integrator.Infrastructure.AmbitApi;
 
 /// <summary>
 /// The connection to Ambit. Off until the installer is given a token, which it keeps in the settings file that only the
-/// service and administrators can open (ADR 0005).
+/// service and administrators can open.
 /// </summary>
 [UsedImplicitly(ImplicitUseKindFlags.Assign, ImplicitUseTargetFlags.Members)] // Bound from configuration.
 public sealed class AmbitApiOptions

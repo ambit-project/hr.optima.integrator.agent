@@ -3,8 +3,8 @@ using JetBrains.Annotations;
 namespace Ambit.Optima.Integrator.Core.Employees;
 
 /// <summary>
-/// One employee to add to Optima. Everything is nullable because it arrives over IPC: the database
-/// procedure is what decides whether a request is complete.
+/// One employee to add to Optima. Everything is nullable because it arrives over IPC or HTTP:
+/// <see cref="EmployeeValidation"/> decides whether a request is complete.
 /// </summary>
 [UsedImplicitly(ImplicitUseTargetFlags.Members)] // Read from JSON.
 public sealed record EmployeeAddRequest(
@@ -54,7 +54,7 @@ public sealed record EmployeeAddResult(
     string? OptimaErrorCodes
 );
 
-/// <summary>The procedure refused the request as a whole, and its message is safe to show.</summary>
+/// <summary>The request was refused as a whole, before any company was touched; the message is safe to show.</summary>
 public sealed class EmployeeRejectedException(int number, string message) : Exception(message)
 {
     public int Number { get; } = number;
@@ -68,7 +68,7 @@ public interface IEmployeeWriter
     );
 }
 
-/// <summary>ADR 0001: writes are off by default and switched on locally, never from the cloud.</summary>
+/// <summary>Writes are off by default and switched on locally, never from the HR application.</summary>
 [UsedImplicitly(ImplicitUseKindFlags.Assign, ImplicitUseTargetFlags.Members)] // Bound from configuration.
 public sealed class WriteOptions
 {

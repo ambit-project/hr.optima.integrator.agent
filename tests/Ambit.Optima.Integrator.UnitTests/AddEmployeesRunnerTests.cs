@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ambit.Optima.Integrator.UnitTests;
 
-/// <summary>ADR 0006: the people of an Ambit operation, added one call each, every outcome a log code.</summary>
+/// <summary>The people of an Ambit operation, added one call each, every outcome a log code.</summary>
 public sealed class AddEmployeesRunnerTests
 {
     private static readonly AgentOperation Add = new(
@@ -85,9 +85,9 @@ public sealed class AddEmployeesRunnerTests
     [Fact]
     public async Task Each_person_is_one_call_keyed_by_the_operation_and_the_person()
     {
-        var writer = new FakeWriter(_ => [Row("CDN_Ambit", "Succeeded")]);
+        var writer = new FakeWriter(_ => [Row("CDN_Firma", "Succeeded")]);
         var api = new FakeApi(
-            new EmployeesWork("CDN_Ambit", [Person(Olena, "Bondarenko"), Person(Jan, "Nowak")])
+            new EmployeesWork("CDN_Firma", [Person(Olena, "Bondarenko"), Person(Jan, "Nowak")])
         );
 
         var result = await Runner(api, writer).RunAsync(Add, CancellationToken.None);
@@ -95,7 +95,7 @@ public sealed class AddEmployeesRunnerTests
         Assert.True(result.Succeeded);
         Assert.Null(result.ErrorCode);
         Assert.Equal(2, writer.Calls.Count);
-        Assert.All(writer.Calls, call => Assert.Equal("CDN_Ambit", call.DatabaseName));
+        Assert.All(writer.Calls, call => Assert.Equal("CDN_Firma", call.DatabaseName));
         Assert.Equal(EmployeesWork.CallId(Add.Id, Olena), writer.Calls[0].OperationId);
         Assert.NotEqual(writer.Calls[0].OperationId, writer.Calls[1].OperationId);
         Assert.Equal(
@@ -144,10 +144,10 @@ public sealed class AddEmployeesRunnerTests
         var writer = new FakeWriter(request =>
             request.EmployeeId == Olena
                 ? throw new EmployeeRejectedException(51012, "pesel must have 11 digits.")
-                : [Row("CDN_Ambit", "Succeeded")]
+                : [Row("CDN_Firma", "Succeeded")]
         );
         var api = new FakeApi(
-            new EmployeesWork("CDN_Ambit", [Person(Olena, "Bondarenko"), Person(Jan, "Nowak")])
+            new EmployeesWork("CDN_Firma", [Person(Olena, "Bondarenko"), Person(Jan, "Nowak")])
         );
 
         var result = await Runner(api, writer).RunAsync(Add, CancellationToken.None);
@@ -166,8 +166,8 @@ public sealed class AddEmployeesRunnerTests
     [Fact]
     public async Task A_failed_company_is_a_failed_operation()
     {
-        var writer = new FakeWriter(_ => [Row("CDN_Ambit", "Failed", 2627)]);
-        var api = new FakeApi(new EmployeesWork("CDN_Ambit", [Person(Olena, "Bondarenko")]));
+        var writer = new FakeWriter(_ => [Row("CDN_Firma", "Failed", 2627)]);
+        var api = new FakeApi(new EmployeesWork("CDN_Firma", [Person(Olena, "Bondarenko")]));
 
         var result = await Runner(api, writer).RunAsync(Add, CancellationToken.None);
 
@@ -178,8 +178,8 @@ public sealed class AddEmployeesRunnerTests
     [Fact]
     public async Task No_company_within_reach_fails_the_operation()
     {
-        var writer = new FakeWriter(_ => [Row("CDN_Ambit", "NoAccess")]);
-        var api = new FakeApi(new EmployeesWork("CDN_Ambit", [Person(Olena, "Bondarenko")]));
+        var writer = new FakeWriter(_ => [Row("CDN_Firma", "NoAccess")]);
+        var api = new FakeApi(new EmployeesWork("CDN_Firma", [Person(Olena, "Bondarenko")]));
 
         var result = await Runner(api, writer).RunAsync(Add, CancellationToken.None);
 
@@ -190,7 +190,7 @@ public sealed class AddEmployeesRunnerTests
     public async Task An_unexpected_error_on_one_person_is_logged_without_its_message()
     {
         var writer = new FakeWriter(_ => throw new InvalidOperationException("PESEL 90052012345"));
-        var api = new FakeApi(new EmployeesWork("CDN_Ambit", [Person(Olena, "Bondarenko")]));
+        var api = new FakeApi(new EmployeesWork("CDN_Firma", [Person(Olena, "Bondarenko")]));
 
         var result = await Runner(api, writer).RunAsync(Add, CancellationToken.None);
 
@@ -225,8 +225,8 @@ public sealed class AddEmployeesRunnerTests
     [Fact]
     public async Task With_writes_switched_off_nobody_is_written()
     {
-        var writer = new FakeWriter(_ => [Row("CDN_Ambit", "Succeeded")]);
-        var api = new FakeApi(new EmployeesWork("CDN_Ambit", [Person(Olena, "Bondarenko")]));
+        var writer = new FakeWriter(_ => [Row("CDN_Firma", "Succeeded")]);
+        var api = new FakeApi(new EmployeesWork("CDN_Firma", [Person(Olena, "Bondarenko")]));
 
         var result = await Runner(api, writer, writes: false).RunAsync(Add, CancellationToken.None);
 

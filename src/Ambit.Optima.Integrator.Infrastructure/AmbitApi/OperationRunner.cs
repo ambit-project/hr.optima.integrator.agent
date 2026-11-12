@@ -40,7 +40,7 @@ public sealed class OperationRunner(
         };
 
     /// <summary>
-    /// ADR 0007. Each deduction is its own call of <c>app.deduction_add</c>, with its own transaction, so one refused
+    /// Each deduction is its own call of <see cref="IDeductionWriter"/>, with its own transaction, so one refused
     /// or failed does not stop the others. Its rows in Optima carry a key made from the deduction and the month, so a
     /// month exported again is written once. The operation succeeds only when every deduction is there afterwards.
     /// </summary>
@@ -137,7 +137,7 @@ public sealed class OperationRunner(
     }
 
     /// <summary>
-    /// ADR 0006. Each person is their own call of <c>app.employee_add</c>, with a transaction per company, so one person
+    /// Each person is their own call of <see cref="IEmployeeWriter"/>, with a transaction per company, so one person
     /// refused or one company failing does not stop the others. A person Optima already has is left alone, which is
     /// what makes trying the operation again safe. The log holds codes and ids, never a message, which can carry a
     /// PESEL.

@@ -365,7 +365,7 @@ public sealed class SetupTests
         var directory = Directory.CreateTempSubdirectory();
         try
         {
-            // A real account, as the agent's own exists only once the service does.
+            // A real account, as the integrator's own exists only once the service does.
             WorkerConfiguration.Write(
                 directory.FullName,
                 ".",

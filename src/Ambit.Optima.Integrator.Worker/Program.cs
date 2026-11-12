@@ -42,7 +42,7 @@ builder
     .Bind(builder.Configuration.GetSection(AmbitApiOptions.SectionName))
     .ValidateOnStart();
 
-// Off unless switched on locally: without it the agent keeps serving the local UI and talks to nobody.
+// Off unless switched on locally: without it the integrator keeps serving the local UI and talks to nobody.
 if (builder.Configuration.GetValue<bool>($"{AmbitApiOptions.SectionName}:Enabled"))
 {
     builder.Services.AddHttpClient<IAmbitApiClient, HttpAmbitApiClient>(

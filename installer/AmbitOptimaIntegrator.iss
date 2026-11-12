@@ -201,7 +201,7 @@ begin
     if Tab > 0 then
     begin
       FirmsPage.Add(Copy(Line, 1, Tab - 1));
-      { Nothing is ticked on a first install; a repeat run shows what the agent can reach now. }
+      { Nothing is ticked on a first install; a repeat run shows what the integrator can reach now. }
       FirmsPage.Values[FirmsPage.CheckListBox.Items.Count - 1] := Copy(Line, Tab + 1, 1) = '1';
     end;
   end;
