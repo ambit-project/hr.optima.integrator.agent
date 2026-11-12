@@ -7,7 +7,7 @@ if ! command -v jb >/dev/null; then
   exit 1
 fi
 [[ "${1:-}" == "--no-build" ]] || dotnet build --nologo -v q
-jb inspectcode Ambit.Agent.slnx --no-build --format=Text --severity=SUGGESTION --output=inspect.txt >/dev/null
+jb inspectcode Ambit.Optima.Integrator.slnx --no-build --format=Text --severity=SUGGESTION --output=inspect.txt >/dev/null
 if grep -qE '^\s+\S+:[0-9]+' inspect.txt; then
   cat inspect.txt
   exit 1

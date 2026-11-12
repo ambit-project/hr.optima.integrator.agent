@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ambit.Optima.Integrator.Infrastructure\Ambit.Optima.Integrator.Infrastructure.csproj" />
+    <ProjectReference Include="..\Ambit.Optima.Integrator.Ipc\Ambit.Optima.Integrator.Ipc.csproj" />
+    <ProjectReference Include="..\Ambit.Optima.Integrator.SqlServer\Ambit.Optima.Integrator.SqlServer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\db\agent-ambit\*.sql" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

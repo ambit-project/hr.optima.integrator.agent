@@ -1,12 +1,12 @@
-# Ambit Optima Agent
+# Ambit Optima Integrator
 
 A local service that connects Ambit with a client's SQL Server and Comarch ERP Optima. It is not an AI agent: it
 fetches assigned tasks from Ambit (by default `https://app.ambitsys.eu`), runs them under controlled rules and reports
 the results.
 
-- `src/Ambit.Agent.Worker` - the Windows Service; it keeps running when the UI is closed.
-- `src/ambit-agent-desktop` - the Flutter UI, for administration and diagnostics only; no SQL logic in Dart.
-- `db/agent-ambit` - the agent's database scripts, embedded in `src/Ambit.Agent.Setup`.
+- `src/Ambit.Optima.Integrator.Worker` - the Windows Service; it keeps running when the UI is closed.
+- `src/ambit-optima-integrator-desktop` - the Flutter UI, for administration and diagnostics only; no SQL logic in Dart.
+- `db/agent-ambit` - the agent's database scripts, embedded in `src/Ambit.Optima.Integrator.Setup`.
 - `installer` - the client's installer (`docs/adr/0004-client-installer.md`).
 - `docs/adr` - decisions.
 - `docs/features.md` - what the agent does today and what is not done yet.
@@ -33,8 +33,8 @@ dotnet test
 On Linux, for development, the Worker listens on a Unix socket in `$XDG_RUNTIME_DIR`:
 
 ```bash
-dotnet run --project src/Ambit.Agent.Worker
-cd src/ambit-agent-desktop && flutter run -d linux
+dotnet run --project src/Ambit.Optima.Integrator.Worker
+cd src/ambit-optima-integrator-desktop && flutter run -d linux
 ```
 
 Windows Authentication needs Windows. The `windows-service-spike` CI job installs the real service with SQL Server
