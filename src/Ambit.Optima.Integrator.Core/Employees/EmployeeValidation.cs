@@ -9,7 +9,7 @@ public static class EmployeeValidation
 {
     public const int DefaultCenterId = 3;
 
-    public static readonly IReadOnlySet<string> DocumentKinds = new HashSet<string>(
+    private static readonly IReadOnlySet<string> DocumentKinds = new HashSet<string>(
         ["IdentityCard", "Passport", "ResidenceCard", "Other"],
         StringComparer.Ordinal
     );

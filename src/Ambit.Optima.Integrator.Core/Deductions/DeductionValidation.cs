@@ -21,15 +21,15 @@ public sealed record ValidDeduction(
 
 public static class DeductionValidation
 {
-    public const string Currency = "PLN";
+    private const string Currency = "PLN";
 
     /// <summary>The largest value Optima's amount column (decimal(15, 2)) holds.</summary>
-    public const decimal MaxAmount = 9_999_999_999_999.99m;
+    private const decimal MaxAmount = 9_999_999_999_999.99m;
 
     public static ValidDeduction Validate(DeductionAddRequest request)
     {
         var item = request.Deduction;
-        var databaseName = request.DatabaseName?.Trim() ?? "";
+        var databaseName = request.DatabaseName.Trim();
         var employeeCode = item.EmployeeCode?.Trim() ?? "";
         var currency = string.IsNullOrWhiteSpace(item.Currency)
             ? Currency

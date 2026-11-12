@@ -6,6 +6,7 @@ using Ambit.Optima.Integrator.Core.Operations;
 using Ambit.Optima.Integrator.Setup;
 using Ambit.Optima.Integrator.SqlServer;
 using Dapper;
+using JetBrains.Annotations;
 using Microsoft.Data.SqlClient;
 using Testcontainers.MsSql;
 
@@ -30,6 +31,7 @@ public sealed class DockerFactAttribute : FactAttribute
 /// database listing four companies. <c>CDN_Alpha</c> is a company as it should be; <c>CDN_Beta</c> holds a tax number
 /// other than the list's; <c>CDN_Gone</c> is listed but has no database; <c>CDN_Off</c> is switched off.
 /// </summary>
+[UsedImplicitly] // Created by xUnit as a class fixture.
 public sealed partial class FakeOptimaFixture : IAsyncLifetime
 {
     public const string Alpha = "CDN_Alpha";
@@ -44,7 +46,7 @@ public sealed partial class FakeOptimaFixture : IAsyncLifetime
 
     public TestSql Sql { get; private set; } = null!;
 
-    public string ConnectionString(string database) =>
+    private string ConnectionString(string database) =>
         new SqlConnectionStringBuilder(_container.GetConnectionString())
         {
             InitialCatalog = database,

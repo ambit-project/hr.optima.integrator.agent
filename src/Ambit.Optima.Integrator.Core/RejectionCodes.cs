@@ -2,13 +2,11 @@ namespace Ambit.Optima.Integrator.Core;
 
 /// <summary>
 /// Stable numbers for a request refused as a whole, before any company is touched. They travel to the HR application
-/// as <c>errorNumber</c> together with a <c>*_rejected</c> log code, and to the local UI over IPC.
+/// as <c>errorNumber</c> together with a <c>*_rejected</c> log code, and to the local UI over IPC. All of them lie
+/// between 51000 and 51999.
 /// </summary>
 public static class RejectionCodes
 {
-    public const int First = 51000;
-    public const int Last = 51999;
-
     public const int EmployeeIdsRequired = 51010;
     public const int EmployeeNamesRequired = 51011;
     public const int PeselInvalid = 51012;
@@ -24,8 +22,6 @@ public static class RejectionCodes
     public const int DeductionCurrencyNotSupported = 51025;
 
     public const int NoCompanyMatches = 51401;
-
-    public static bool IsRejection(int number) => number is >= First and <= Last;
 }
 
 /// <summary>Numbers the integrator records for a company that failed for a reason of its own, not SQL Server's.</summary>

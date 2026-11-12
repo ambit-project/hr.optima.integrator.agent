@@ -1,8 +1,10 @@
 using System.Threading.Channels;
+using JetBrains.Annotations;
 using Microsoft.Extensions.Logging;
 
 namespace Ambit.Optima.Integrator.SqlServer.Logging;
 
+[UsedImplicitly(ImplicitUseTargetFlags.Members)] // Read by Dapper as parameters.
 public sealed record SqlLogEntry(
     string Level,
     string Category,

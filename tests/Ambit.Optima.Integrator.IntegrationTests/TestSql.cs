@@ -17,8 +17,8 @@ public sealed class TestSql
     public TestSql(string server)
         : this(new SqlServerOptions { Server = server, TrustServerCertificate = true }) { }
 
-    public SqlConnections Connections { get; }
-    public OptimaCompanies Companies { get; }
+    private SqlConnections Connections { get; }
+    private OptimaCompanies Companies { get; }
 
     public SqlEmployeeWriter EmployeeWriter() => new(Connections, Companies);
 

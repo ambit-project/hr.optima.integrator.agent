@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ambit.Optima.Integrator.Core;
 using Ambit.Optima.Integrator.Core.Deductions;
 using Ambit.Optima.Integrator.Core.Employees;
@@ -225,7 +226,14 @@ public sealed class DeductionValidationTests
     public void The_amount_is_positive_with_at_most_two_decimals(string amount)
     {
         var refused = Assert.Throws<DeductionRejectedException>(() =>
-            DeductionValidation.Validate(Request(Item() with { Amount = decimal.Parse(amount) }))
+            DeductionValidation.Validate(
+                Request(
+                    Item() with
+                    {
+                        Amount = decimal.Parse(amount, CultureInfo.InvariantCulture),
+                    }
+                )
+            )
         );
         Assert.Equal(RejectionCodes.DeductionAmountInvalid, refused.Number);
     }
