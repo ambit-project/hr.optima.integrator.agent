@@ -1,7 +1,5 @@
 using Ambit.Optima.Integrator.Core.Deductions;
-using Ambit.Optima.Integrator.SqlServer;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 
 namespace Ambit.Optima.Integrator.IntegrationTests;
 
@@ -22,8 +20,7 @@ public sealed class DeductionWriteFactAttribute : FactAttribute
 }
 
 /// <summary>
-/// ADR 0007 against real Optima: <c>app.deduction_add</c> through Comarch's import procedures, as the account running
-/// the tests. The deduction goes to the company's first employee with an import id, for the 2998-12 month, which no
+/// Deductions against real Optima, through Comarch's import procedures, as the account running the tests. The deduction goes to the company's first employee with an import id, for the 2998-12 month, which no
 /// payroll will reach, and is deleted afterwards.
 /// </summary>
 public sealed class DeductionWriteEndToEndTests
@@ -127,9 +124,7 @@ public sealed class DeductionWriteEndToEndTests
         var (employeeId, code, rowId, component) = await PickAsync();
         var deductionId = Guid.NewGuid();
         var key = DeductionItem.OptimaKey(deductionId, Year, Month);
-        var writer = new SqlDeductionWriter(
-            Options.Create(new SqlServerOptions { Server = Server, TrustServerCertificate = true })
-        );
+        var writer = new TestSql(Server).DeductionWriter();
         var item = new DeductionItem(deductionId, employeeId, code, component, 123.45m, "PLN");
 
         try
@@ -166,9 +161,7 @@ public sealed class DeductionWriteEndToEndTests
     {
         var (_, _, _, component) = await PickAsync();
         var deductionId = Guid.NewGuid();
-        var writer = new SqlDeductionWriter(
-            Options.Create(new SqlServerOptions { Server = Server, TrustServerCertificate = true })
-        );
+        var writer = new TestSql(Server).DeductionWriter();
 
         var result = await writer.AddAsync(
             new DeductionAddRequest(
@@ -188,9 +181,7 @@ public sealed class DeductionWriteEndToEndTests
     [DeductionWriteFact]
     public async Task More_than_two_decimals_is_refused_before_sql()
     {
-        var writer = new SqlDeductionWriter(
-            Options.Create(new SqlServerOptions { Server = Server, TrustServerCertificate = true })
-        );
+        var writer = new TestSql(Server).DeductionWriter();
 
         var refused = await Assert.ThrowsAsync<DeductionRejectedException>(() =>
             writer.AddAsync(

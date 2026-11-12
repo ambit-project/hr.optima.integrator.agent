@@ -1,3 +1,5 @@
+using Ambit.Optima.Integrator.SqlServer;
+
 namespace Ambit.Optima.Integrator.Setup;
 
 /// <summary>What the installer's wizard passes to this program.</summary>
@@ -50,7 +52,7 @@ public sealed record SetupArguments(
         return new SetupArguments(
             command,
             server,
-            options.GetValueOrDefault("--config-database", "CDN_KNF_Konfiguracja"),
+            options.GetValueOrDefault("--config-database", SqlServerOptions.DefaultConfigDatabase),
             firms,
             appDirectory,
             options.GetValueOrDefault("--ambit-url", ""),

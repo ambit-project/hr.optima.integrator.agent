@@ -29,7 +29,7 @@ try
         }
     }
 
-    var database = new AgentDatabaseInstaller(arguments.Server, arguments.ConfigDatabase);
+    var database = new DatabaseInstaller(arguments.Server, arguments.ConfigDatabase);
 
     if (arguments.Command == SetupArguments.FirmsCommand)
     {
@@ -45,6 +45,7 @@ try
     WorkerConfiguration.Write(
         arguments.AppDirectory,
         arguments.Server,
+        arguments.ConfigDatabase,
         settings,
         ServiceRegistration.Login
     );

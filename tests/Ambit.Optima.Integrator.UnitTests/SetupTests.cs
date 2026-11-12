@@ -3,55 +3,55 @@ using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Ambit.Optima.Integrator.Setup;
 
 namespace Ambit.Optima.Integrator.UnitTests;
 
 public sealed class SetupTests
 {
-    private static readonly Dictionary<string, string> AllVariables = new()
+    [Fact]
+    public void Migrations_and_grants_are_embedded_in_order()
     {
-        ["AgentDatabase"] = "agent-ambit",
-        ["ServiceLogin"] = @"NT SERVICE\AmbitOptimaIntegrator",
-        ["ConfigDatabase"] = "CDN_KNF_Konfiguracja",
-        ["FirmDatabase"] = "CDN_Firma",
-    };
-
-    [Theory]
-    [InlineData("001-database.sql")]
-    [InlineData("002-tables.sql")]
-    [InlineData("003-procedures.sql")]
-    [InlineData("004-service-account.sql")]
-    [InlineData("005-firm.sql")]
-    [InlineData("006-firm-revoke.sql")]
-    public void Every_script_is_embedded_and_needs_only_known_variables(string name)
-    {
-        var batches = SqlScript.Batches(SqlScript.Load(name), AllVariables);
-
-        Assert.NotEmpty(batches);
-        Assert.DoesNotContain(batches, batch => batch.Contains("$("));
+        Assert.Equal(
+            [
+                "grants.01-login.sql",
+                "grants.02-integrator.sql",
+                "grants.03-config.sql",
+                "grants.company-revoke.sql",
+                "grants.company.sql",
+                "migrations.0001-initial-schema.sql",
+            ],
+            DatabaseInstaller.EmbeddedScripts
+        );
     }
 
     [Fact]
-    public void A_script_splits_on_GO_alone_on_a_line_and_fills_in_variables()
+    public void Grants_use_only_the_service_login_variable()
     {
-        var batches = SqlScript.Batches(
-            "USE [$(FirmDatabase)];\r\ngo\r\nSELECT 'GOOD GO';\nGO  \n\nGO\n",
-            AllVariables
-        );
-
-        Assert.Equal(2, batches.Count);
-        Assert.Contains("[CDN_Firma]", batches[0]);
-        Assert.Contains("SELECT 'GOOD GO';", batches[1]);
+        var assembly = typeof(DatabaseInstaller).Assembly;
+        foreach (var name in DatabaseInstaller.EmbeddedScripts)
+        {
+            using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+            var script = reader.ReadToEnd();
+            var variables = Regex
+                .Matches(script, @"\$(\w+)\$")
+                .Select(match => match.Groups[1].Value)
+                .Distinct();
+            Assert.All(variables, variable => Assert.Equal("ServiceLogin", variable));
+            Assert.DoesNotContain("USE ", script, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]
-    public void An_unknown_variable_stops_the_script()
+    public void Settings_name_the_configuration_and_integrator_databases()
     {
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            SqlScript.Batches("SELECT $(Missing);", AllVariables)
-        );
-        Assert.Contains("Missing", exception.Message);
+        var sql = JsonNode.Parse(
+            WorkerConfiguration.Merge(null, ".", configDatabase: "CDN_Config")
+        )!["Sql"]!;
+
+        Assert.Equal("CDN_Config", sql["ConfigDatabase"]!.GetValue<string>());
+        Assert.Equal("ambit-optima-integrator", sql["IntegratorDatabase"]!.GetValue<string>());
     }
 
     [Fact]
@@ -369,6 +369,7 @@ public sealed class SetupTests
             WorkerConfiguration.Write(
                 directory.FullName,
                 ".",
+                "CDN_KNF_Konfiguracja",
                 new AmbitSettings(null, Token),
                 @"NT AUTHORITY\LOCAL SERVICE"
             );

@@ -23,9 +23,11 @@ builder.Services.Configure<WriteOptions>(
 builder.Services.AddSingleton<SqlLogChannel>();
 builder.Logging.Services.AddSingleton<ILoggerProvider, SqlLoggerProvider>();
 builder.Services.AddHostedService<SqlLogWriter>();
-builder.Services.AddHostedService<AgentDatabaseMaintenance>();
+builder.Services.AddHostedService<IntegratorDatabaseMaintenance>();
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<SqlConnections>();
+builder.Services.AddSingleton<OptimaCompanies>();
 builder.Services.AddSingleton<ISqlDiagnostics, SqlDiagnostics>();
 builder.Services.AddSingleton<IEmployeeWriter, SqlEmployeeWriter>();
 builder.Services.AddSingleton<IDeductionWriter, SqlDeductionWriter>();

@@ -1,4 +1,5 @@
 using Ambit.Optima.Integrator.Core.Diagnostics;
+using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
@@ -20,21 +21,12 @@ public sealed class SqlDiagnostics(IOptions<SqlServerOptions> options) : ISqlDia
     {
         var settings = options.Value;
         await using var connection = new SqlConnection(settings.ToConnectionString());
-        await connection.OpenAsync(cancellationToken);
-
-        await using var command = new SqlCommand(IdentityQuery, connection);
-        command.CommandTimeout = settings.CommandTimeoutSeconds;
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        await reader.ReadAsync(cancellationToken);
-
-        return new SqlIdentity(
-            reader.GetString(0),
-            reader.GetString(1),
-            reader.GetString(2),
-            reader.GetString(3),
-            reader.GetBoolean(4),
-            reader.GetBoolean(5)
+        return await connection.QuerySingleAsync<SqlIdentity>(
+            new CommandDefinition(
+                IdentityQuery,
+                commandTimeout: settings.CommandTimeoutSeconds,
+                cancellationToken: cancellationToken
+            )
         );
     }
 }

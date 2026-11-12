@@ -31,7 +31,7 @@ public sealed class SqlLogChannel
     public void Write(SqlLogEntry entry) => _channel.Writer.TryWrite(entry);
 }
 
-[ProviderAlias("AgentDatabase")]
+[ProviderAlias("IntegratorDatabase")]
 public sealed class SqlLoggerProvider(SqlLogChannel channel) : ILoggerProvider
 {
     public ILogger CreateLogger(string categoryName) => new SqlLogger(categoryName, channel);

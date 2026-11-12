@@ -12,26 +12,27 @@ public sealed class SqlServerOptions
 {
     public const string SectionName = "Sql";
 
+    public const string DefaultIntegratorDatabase = "ambit-optima-integrator";
+    public const string DefaultConfigDatabase = "CDN_KNF_Konfiguracja";
+
     public string Server { get; init; } = "localhost";
     public string Database { get; init; } = "master";
     public bool Encrypt { get; init; } = true;
     public bool TrustServerCertificate { get; init; }
     public int ConnectionTimeoutSeconds { get; init; } = 15;
-    public int CommandTimeoutSeconds { get; init; } = 30;
+    public int CommandTimeoutSeconds { get; init; } = 60;
 
-    /// <summary>The agent's own database, with its procedures and logs.</summary>
-    public string AgentDatabase { get; init; } = "agent-ambit";
+    /// <summary>The integrator's own database: the record of writes and the log.</summary>
+    public string IntegratorDatabase { get; init; } = DefaultIntegratorDatabase;
 
-    /// <summary>Long, because one call visits every company.</summary>
-    public int EmployeeAddTimeoutSeconds { get; init; } = 300;
+    /// <summary>Optima's configuration database, which holds the list of companies (<c>CDN.Bazy</c>).</summary>
+    public string ConfigDatabase { get; init; } = DefaultConfigDatabase;
 
     public int LogRetentionDays { get; init; } = 30;
 
-    public string ToConnectionString() => Build(Database);
+    public string ToConnectionString() => ToConnectionString(Database);
 
-    public string ToAgentConnectionString() => Build(AgentDatabase);
-
-    private string Build(string database) =>
+    public string ToConnectionString(string database) =>
         new SqlConnectionStringBuilder
         {
             DataSource = Server,

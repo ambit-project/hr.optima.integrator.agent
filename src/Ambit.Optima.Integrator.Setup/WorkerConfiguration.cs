@@ -3,6 +3,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ambit.Optima.Integrator.SqlServer;
 
 namespace Ambit.Optima.Integrator.Setup;
 
@@ -18,13 +19,23 @@ public static class WorkerConfiguration
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
-    public static string Merge(string? existing, string server, AmbitSettings? ambit = null)
+    public static string Merge(
+        string? existing,
+        string server,
+        AmbitSettings? ambit = null,
+        string? configDatabase = null
+    )
     {
         var root = existing is null ? [] : JsonNode.Parse(existing)!.AsObject();
         if (root["Sql"] is not JsonObject sql)
             root["Sql"] = sql = [];
 
         sql["Server"] = server;
+        if (configDatabase is not null)
+            sql["ConfigDatabase"] = configDatabase;
+        else
+            sql["ConfigDatabase"] ??= SqlServerOptions.DefaultConfigDatabase;
+        sql["IntegratorDatabase"] ??= SqlServerOptions.DefaultIntegratorDatabase;
         sql["Encrypt"] ??= true;
         // A default SQL Server install has a self-signed certificate, which the Worker could not verify.
         sql["TrustServerCertificate"] ??= true;
@@ -37,7 +48,7 @@ public static class WorkerConfiguration
         else
             api[UrlKey] ??= AmbitSettings.DefaultUrl;
 
-        // A token is what switches the connection on. Without one the agent keeps working for the local UI alone.
+        // A token is what switches the connection on. Without one the integrator keeps working for the local UI alone.
         if (ambit?.Token is { } token)
         {
             api[TokenKey] = token;
@@ -64,6 +75,7 @@ public static class WorkerConfiguration
     public static void Write(
         string appDirectory,
         string server,
+        string configDatabase,
         AmbitSettings ambit,
         string serviceAccount
     )
@@ -74,7 +86,7 @@ public static class WorkerConfiguration
         // Locked before the token goes in, so it never sits in a file that inherited Program Files' rights.
         if (OperatingSystem.IsWindows())
             Protect(path, serviceAccount);
-        File.WriteAllText(path, Merge(existing, server, ambit));
+        File.WriteAllText(path, Merge(existing, server, ambit, configDatabase));
     }
 
     /// <summary>

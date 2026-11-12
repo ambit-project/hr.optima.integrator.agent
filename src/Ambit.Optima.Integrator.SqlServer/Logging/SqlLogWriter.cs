@@ -1,15 +1,14 @@
-using System.Data;
+using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Ambit.Optima.Integrator.SqlServer.Logging;
 
-/// <summary>Moves log entries from the channel to the agent's database.</summary>
+/// <summary>Moves log entries from the channel to the integrator's database.</summary>
 public sealed class SqlLogWriter(
     SqlLogChannel channel,
-    IOptions<SqlServerOptions> options,
+    SqlConnections connections,
     ILogger<SqlLogWriter> logger
 ) : BackgroundService
 {
@@ -38,8 +37,7 @@ public sealed class SqlLogWriter(
     {
         try
         {
-            await using var connection = new SqlConnection(options.Value.ToAgentConnectionString());
-            await connection.OpenAsync(cancellationToken);
+            await using var connection = await connections.OpenIntegratorAsync(cancellationToken);
 
             while (channel.Reader.TryRead(out var entry))
                 await WriteAsync(connection, entry, cancellationToken);
@@ -49,7 +47,7 @@ public sealed class SqlLogWriter(
         catch (SqlException exception)
         {
             logger.LogWarning(
-                "Writing to the agent's log failed with SQL error {Number}.",
+                "Writing to the integrator's log failed with SQL error {Number}.",
                 exception.Number
             );
             return false;
@@ -60,17 +58,15 @@ public sealed class SqlLogWriter(
         SqlConnection connection,
         SqlLogEntry entry,
         CancellationToken cancellationToken
-    )
-    {
-        await using var command = new SqlCommand("app.log_write", connection);
-        command.CommandType = CommandType.StoredProcedure;
-        command.Parameters.AddWithValue("@level", entry.Level);
-        command.Parameters.AddWithValue("@category", entry.Category);
-        command.Parameters.AddWithValue("@message", entry.Message);
-        command.Parameters.AddWithValue(
-            "@exception_type",
-            (object?)entry.ExceptionType ?? DBNull.Value
+    ) =>
+        await connection.ExecuteAsync(
+            new CommandDefinition(
+                """
+                INSERT integrator.log_entry (level, category, message, exception_type)
+                VALUES (@Level, @Category, @Message, @ExceptionType);
+                """,
+                entry,
+                cancellationToken: cancellationToken
+            )
         );
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
 }

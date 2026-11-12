@@ -4,13 +4,12 @@ using System.Text.Json;
 using Ambit.Optima.Integrator.Core.Employees;
 using Ambit.Optima.Integrator.Core.Operations;
 using Ambit.Optima.Integrator.Infrastructure.AmbitApi;
-using Ambit.Optima.Integrator.SqlServer;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ambit.Optima.Integrator.IntegrationTests;
 
-/// <summary>Runs only where a real Optima instance with the agent's database is within reach.</summary>
+/// <summary>Runs only where a real Optima instance with the integrator's database is within reach.</summary>
 public sealed class OptimaSqlFactAttribute : FactAttribute
 {
     public const string ServerVariable = "AMBIT_TEST_SQL_SERVER";
@@ -23,7 +22,8 @@ public sealed class OptimaSqlFactAttribute : FactAttribute
 }
 
 /// <summary>
-/// The whole agent against real Optima data, with only Ambit's HTTP answers faked: this is the JSON Ambit receives.
+/// The whole integrator against real Optima data, with only the HR application's HTTP answers faked: this is the JSON
+/// the application receives.
 /// Set AMBIT_TEST_DEDUCTION and AMBIT_TEST_ALLOWANCE to names defined in Optima to check they arrive.
 /// </summary>
 public sealed class PayrollComponentsEndToEndTests
@@ -62,20 +62,16 @@ public sealed class PayrollComponentsEndToEndTests
         using var ambit = new FakeAmbit();
         using var http = new HttpClient(ambit);
         http.BaseAddress = new Uri("https://ambit.example/");
-        var sql = Options.Create(
-            new SqlServerOptions
-            {
-                Server = Environment.GetEnvironmentVariable(OptimaSqlFactAttribute.ServerVariable)!,
-                TrustServerCertificate = true,
-            }
+        var sql = new TestSql(
+            Environment.GetEnvironmentVariable(OptimaSqlFactAttribute.ServerVariable)!
         );
         var client = new HttpAmbitApiClient(http, Options.Create(new WriteOptions()));
         var poller = new OperationPoller(
             client,
             new OperationRunner(
-                new SqlPayrollComponentReader(sql),
-                new SqlEmployeeWriter(sql),
-                new SqlDeductionWriter(sql),
+                sql.PayrollComponentReader(),
+                sql.EmployeeWriter(),
+                sql.DeductionWriter(),
                 client,
                 Options.Create(new WriteOptions()),
                 TimeProvider.System
