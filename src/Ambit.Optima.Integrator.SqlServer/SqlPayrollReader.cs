@@ -1,6 +1,7 @@
 using Ambit.Optima.Integrator.Core;
 using Ambit.Optima.Integrator.Core.Payrolls;
 using Dapper;
+using JetBrains.Annotations;
 using Microsoft.Data.SqlClient;
 
 namespace Ambit.Optima.Integrator.SqlServer;
@@ -156,6 +157,7 @@ public sealed class SqlPayrollReader(SqlConnections connections, OptimaCompanies
         }
     }
 
+    [UsedImplicitly] // Read by Dapper.
     private sealed record ListRow(
         int OptimaId,
         string? Number,
@@ -166,6 +168,7 @@ public sealed class SqlPayrollReader(SqlConnections connections, OptimaCompanies
         bool IsClosed
     );
 
+    [UsedImplicitly] // Read by Dapper.
     private sealed record PayoutRow(
         int ListId,
         int OptimaId,
@@ -177,6 +180,7 @@ public sealed class SqlPayrollReader(SqlConnections connections, OptimaCompanies
         bool IsClosed
     );
 
+    [UsedImplicitly] // Read by Dapper.
     private sealed record ElementRow(
         int PayoutId,
         int OptimaId,

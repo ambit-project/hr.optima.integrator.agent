@@ -36,7 +36,7 @@ public sealed class OperationPoller(
     /// Ambit could not be reached or refused the token, the agent waits the longer retry time, so an API that is down
     /// is not asked twice a second.
     /// </summary>
-    public TimeSpan Wait(PollOutcome outcome) =>
+    private TimeSpan Wait(PollOutcome outcome) =>
         outcome switch
         {
             PollOutcome.Ran => TimeSpan.Zero,

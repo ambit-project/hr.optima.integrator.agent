@@ -82,7 +82,7 @@ public sealed class OperationRunner(
         foreach (var item in work.Deductions)
             log.Add(await AddItemAsync(operation, work, item, kind, codes, cancellationToken));
 
-        var done = log.All(e => e.Code == codes.Added || e.Code == codes.Exists);
+        var done = log.All(e => e.Code == codes.ItemAdded || e.Code == codes.ItemExists);
         return new OperationResult(operation.Attempt, done, done ? null : codes.Failed, log);
     }
 
@@ -133,8 +133,8 @@ public sealed class OperationRunner(
             return ItemEntry(
                 result.Status switch
                 {
-                    Added => codes.Added,
-                    AlreadyExists => codes.Exists,
+                    Added => codes.ItemAdded,
+                    AlreadyExists => codes.ItemExists,
                     NoAccess => OperationLogCodes.DatabaseNoAccess,
                     EmployeeNotFound => OperationLogCodes.EmployeeNotFound,
                     ComponentNotFound => OperationLogCodes.ComponentNotFound,
@@ -146,7 +146,7 @@ public sealed class OperationRunner(
         }
         catch (DeductionRejectedException rejected)
         {
-            return ItemEntry(codes.Rejected, rejected.Number);
+            return ItemEntry(codes.ItemRejected, rejected.Number);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -172,9 +172,9 @@ public sealed class OperationRunner(
 
     /// <summary>The log and error codes of one kind of export.</summary>
     private sealed record ExportCodes(
-        string Added,
-        string Exists,
-        string Rejected,
+        string ItemAdded,
+        string ItemExists,
+        string ItemRejected,
         string ItemFailed,
         string Failed,
         string Unavailable
@@ -211,11 +211,10 @@ public sealed class OperationRunner(
         CancellationToken cancellationToken
     )
     {
-        PayrollPeriod? period;
         PayrollRead read;
         try
         {
-            period = await api.GetPayrollPeriodAsync(operation.Id, cancellationToken);
+            var period = await api.GetPayrollPeriodAsync(operation.Id, cancellationToken);
             if (period is null)
                 return Failure(operation, OperationLogCodes.PayrollsUnavailable);
 
