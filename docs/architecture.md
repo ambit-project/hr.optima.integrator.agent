@@ -30,14 +30,18 @@ flowchart LR
 
 ## Operations
 
-The Worker asks the HR application for work (`claim`) every `AmbitApi:PollSeconds`. An operation has a kind, an id and
+The Worker asks the HR application for work (`claim`) every `AmbitApi:PollIntervalMilliseconds` (500 ms by default)
+while nothing waits, at once after an operation, and after `AmbitApi:RetrySeconds` when the application cannot be
+reached or refuses the token. An operation has a kind, an id and
 an attempt number. The Worker runs it and reports one result. See [the HR application's API](hr-application-api.md).
 
 | Kind | What happens | Needs `Writes:Enabled` |
 | --- | --- | --- |
-| `ReadPayrollComponents` | Reads the active payroll components of every active company. | no |
+| `ReadPayrollComponents` | Reads every payroll component, active or not, of every active company. | no |
+| `ReadPayrolls` | Reads one company's payroll lists of one month, with payouts and their elements. | no |
 | `AddEmployees` | Adds each person to one company or to every active company. | yes |
 | `ExportDeductions` | Gives employees one month's deductions in one company. | yes |
+| `ExportAllowances` | Gives employees one month's allowances in one company. | yes |
 
 Rules that hold for every operation:
 
@@ -59,12 +63,13 @@ C# code. There are no stored procedures of our own.
 | --- | --- | --- |
 | `OptimaCompanies` | configuration | Lists active companies (`CDN.Bazy`), checks access (`HAS_DBACCESS`) and the tax number. |
 | `SqlEmployeeWriter` | integrator, company | Claims a row per company, calls `CDN.DodajPracownika`, completes `CDN.PracEtaty`. |
-| `SqlDeductionWriter` | integrator, company | Calls `CDN.ImportDataDodatki` and `CDN.ImportDataDodatkiHist` under one import key. |
+| `SqlDeductionWriter` | integrator, company | Deductions and allowances: calls `CDN.ImportDataDodatki` and `CDN.ImportDataDodatkiHist` under one import key. |
 | `SqlPayrollComponentReader` | company | Reads `CDN.TypWyplata`. |
+| `SqlPayrollReader` | company | Reads `CDN.ListyPlac`, `CDN.Wyplaty`, `CDN.WypElementy`, and the employees' ids from `CDN.PracKod`. |
 | `SqlLogWriter` | integrator | Writes the service's log through a bounded channel. |
 | `IntegratorDatabaseMaintenance` | integrator | Marks calls cut off by a stop as `Unknown`; deletes old rows daily. |
 
-Request validation lives in `Core` (`EmployeeValidation`, `DeductionValidation`). A request refused as a whole carries a
+Request validation lives in `Core` (`EmployeeValidation`, `DeductionValidation`, which also checks allowances). A request refused as a whole carries a
 number from `RejectionCodes` (51000-51999) and touches no company.
 
 ## The integrator's database
@@ -74,7 +79,7 @@ number from `RejectionCodes` (51000-51999) and touches no company.
 | Table | Rows |
 | --- | --- |
 | `employee_call` | One per employee call and company: status, attempt, Optima ids, warning and error codes. Personal values are stored only as "given / not given". |
-| `deduction_call` | One per operation and deduction: ids, month, component, amount, status. |
+| `deduction_call` | One per operation and deduction or allowance (`kind`): ids, month, component, amount, status. |
 | `log_entry` | The service's log. |
 
 Rows older than `Sql:LogRetentionDays` (30 by default) are deleted, except employee calls still `Started`.
@@ -94,7 +99,8 @@ recorded in `dbo.SchemaVersions`. A new change is a new script; an applied scrip
 | `Sql:Encrypt`, `Sql:TrustServerCertificate` | `true`, `false` | TLS to SQL Server. The installer trusts the server's certificate, as a default install has a self-signed one. |
 | `Sql:CommandTimeoutSeconds` | `60` | Per SQL command. |
 | `Sql:LogRetentionDays` | `30` | Retention of logs and call records. |
-| `Writes:Enabled` | `false` | Allows `AddEmployees`, `ExportDeductions` and the IPC command `employee.add`. |
+| `Writes:Enabled` | `false` | Allows `AddEmployees`, `ExportDeductions`, `ExportAllowances` and the IPC command `employee.add`. |
 | `AmbitApi:Enabled` | `false` | Connection to the HR application. The installer switches it on with a token. |
 | `AmbitApi:BaseUrl`, `AmbitApi:Key` | | The application's address (https, or http on loopback only) and the integrator's token. |
-| `AmbitApi:PollSeconds`, `RetrySeconds`, `RequestTimeoutSeconds` | `30`, `60`, `30` | Polling and retries. |
+| `AmbitApi:PollIntervalMilliseconds` | `500` | Wait before the next claim when nothing waited; 100 to 60000. `PollSeconds` of earlier versions is ignored, and an upgrade removes it. |
+| `AmbitApi:RetrySeconds`, `RequestTimeoutSeconds` | `60`, `30` | Wait after the application could not be reached or refused the token, and between attempts to send a result; the timeout of one request. |
