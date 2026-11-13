@@ -44,7 +44,7 @@ Type: files; Name: "{app}\appsettings.Production.json"
 
 [Code]
 const
-  DefaultAmbitUrl = 'https://app.ambitsys.eu';
+  DefaultAmbitUrl = 'https://[HrWebUrl]';
   AmbitProblem = 2;
 
 var
