@@ -72,6 +72,7 @@ public sealed class PayrollComponentsEndToEndTests
                 sql.PayrollComponentReader(),
                 sql.EmployeeWriter(),
                 sql.DeductionWriter(),
+                sql.PayrollReader(),
                 client,
                 Options.Create(new WriteOptions()),
                 TimeProvider.System
@@ -81,7 +82,7 @@ public sealed class PayrollComponentsEndToEndTests
             NullLogger<OperationPoller>.Instance
         );
 
-        Assert.True(await poller.RunNextAsync(CancellationToken.None));
+        Assert.Equal(PollOutcome.Ran, await poller.RunNextAsync(CancellationToken.None));
 
         Assert.EndsWith(
             $"/api/optima/agent/operations/{OperationId}/result",

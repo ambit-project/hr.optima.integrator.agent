@@ -4,6 +4,7 @@ using System.Text.Json;
 using Ambit.Optima.Integrator.Core.Deductions;
 using Ambit.Optima.Integrator.Core.Employees;
 using Ambit.Optima.Integrator.Core.Operations;
+using Ambit.Optima.Integrator.Core.Payrolls;
 using Microsoft.Extensions.Options;
 
 namespace Ambit.Optima.Integrator.Infrastructure.AmbitApi;
@@ -48,20 +49,38 @@ public sealed class HttpAmbitApiClient(HttpClient http, IOptions<WriteOptions> w
         return await response.Content.ReadFromJsonAsync<EmployeesWork>(Json, cancellationToken);
     }
 
-    public async Task<DeductionsWork?> GetDeductionsAsync(
+    public Task<DeductionsWork?> GetDeductionsAsync(
         Guid operationId,
         CancellationToken cancellationToken
+    ) => GetWorkAsync<DeductionsWork>(operationId, "deductions", cancellationToken);
+
+    public Task<AllowancesWork?> GetAllowancesAsync(
+        Guid operationId,
+        CancellationToken cancellationToken
+    ) => GetWorkAsync<AllowancesWork>(operationId, "allowances", cancellationToken);
+
+    public Task<PayrollPeriod?> GetPayrollPeriodAsync(
+        Guid operationId,
+        CancellationToken cancellationToken
+    ) => GetWorkAsync<PayrollPeriod>(operationId, "payroll-period", cancellationToken);
+
+    /// <summary>What an operation this agent holds needs. A 404 is final and reads as null.</summary>
+    private async Task<T?> GetWorkAsync<T>(
+        Guid operationId,
+        string part,
+        CancellationToken cancellationToken
     )
+        where T : class
     {
         using var response = await http.GetAsync(
-            $"api/optima/agent/operations/{operationId}/deductions",
+            $"api/optima/agent/operations/{operationId}/{part}",
             cancellationToken
         );
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<DeductionsWork>(Json, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken);
     }
 
     public async Task<bool> ReportAsync(

@@ -26,6 +26,8 @@ public sealed class TestSql
 
     public SqlPayrollComponentReader PayrollComponentReader() => new(Connections, Companies);
 
+    public SqlPayrollReader PayrollReader() => new(Connections, Companies);
+
     public IntegratorDatabaseMaintenance Maintenance(SqlServerOptions options) =>
         new(
             Connections,

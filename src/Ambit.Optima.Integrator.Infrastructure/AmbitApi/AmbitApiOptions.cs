@@ -15,7 +15,13 @@ public sealed class AmbitApiOptions
     public bool Enabled { get; init; }
     public string BaseUrl { get; init; } = "";
     public string Key { get; init; } = "";
-    public int PollSeconds { get; init; } = 30;
+    public const int MinPollIntervalMilliseconds = 100;
+    public const int MaxPollIntervalMilliseconds = 60_000;
+
+    /// <summary>How long an empty queue waits before the next claim. <c>PollSeconds</c> of older versions is ignored.</summary>
+    public int PollIntervalMilliseconds { get; init; } = 500;
+
+    /// <summary>How long the agent waits after Ambit could not be reached or refused the token, and between reports.</summary>
     public int RetrySeconds { get; init; } = 60;
     public int RequestTimeoutSeconds { get; init; } = 30;
 }
@@ -32,8 +38,14 @@ public sealed class AmbitApiOptionsValidator : IValidateOptions<AmbitApiOptions>
             failures.Add("AmbitApi:BaseUrl must be an https address.");
         if (string.IsNullOrWhiteSpace(options.Key))
             failures.Add("AmbitApi:Key is required when AmbitApi:Enabled is set.");
-        if (options.PollSeconds < 1)
-            failures.Add("AmbitApi:PollSeconds must be at least 1.");
+        if (
+            options.PollIntervalMilliseconds
+            is < AmbitApiOptions.MinPollIntervalMilliseconds
+                or > AmbitApiOptions.MaxPollIntervalMilliseconds
+        )
+            failures.Add(
+                $"AmbitApi:PollIntervalMilliseconds must be between {AmbitApiOptions.MinPollIntervalMilliseconds} and {AmbitApiOptions.MaxPollIntervalMilliseconds}."
+            );
         if (options.RetrySeconds < 1)
             failures.Add("AmbitApi:RetrySeconds must be at least 1.");
         if (options.RequestTimeoutSeconds < 1)

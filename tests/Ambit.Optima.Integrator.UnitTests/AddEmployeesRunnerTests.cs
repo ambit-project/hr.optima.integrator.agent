@@ -1,6 +1,7 @@
 using Ambit.Optima.Integrator.Core.Deductions;
 using Ambit.Optima.Integrator.Core.Employees;
 using Ambit.Optima.Integrator.Core.Operations;
+using Ambit.Optima.Integrator.Core.Payrolls;
 using Ambit.Optima.Integrator.Infrastructure.AmbitApi;
 using Microsoft.Extensions.Options;
 
@@ -35,6 +36,16 @@ public sealed class AddEmployeesRunnerTests
             Guid operationId,
             CancellationToken cancellationToken
         ) => Task.FromResult<DeductionsWork?>(null);
+
+        public Task<AllowancesWork?> GetAllowancesAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => Task.FromResult<AllowancesWork?>(null);
+
+        public Task<PayrollPeriod?> GetPayrollPeriodAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => Task.FromResult<PayrollPeriod?>(null);
 
         public Task<bool> ReportAsync(
             Guid operationId,
@@ -77,6 +88,7 @@ public sealed class AddEmployeesRunnerTests
             new NoReader(),
             writer,
             new NoDeductions(),
+            new NoPayrolls(),
             api,
             Options.Create(new WriteOptions { Enabled = writes }),
             TimeProvider.System

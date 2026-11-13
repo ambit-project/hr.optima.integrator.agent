@@ -264,6 +264,24 @@ public sealed class DeductionValidationTests
         );
         Assert.Equal(RejectionCodes.DeductionTargetRequired, refused.Number);
     }
+
+    [Fact]
+    public void An_allowance_is_refused_under_its_own_numbers()
+    {
+        var request = Request(Item() with { Currency = "EUR" }) with
+        {
+            Kind = PayItemKind.Allowance,
+        };
+
+        var refused = Assert.Throws<DeductionRejectedException>(() =>
+            DeductionValidation.Validate(request)
+        );
+        Assert.Equal(RejectionCodes.AllowanceCurrencyNotSupported, refused.Number);
+        Assert.Equal(
+            PayItemKind.Allowance,
+            DeductionValidation.Validate(Request(Item()) with { Kind = PayItemKind.Allowance }).Kind
+        );
+    }
 }
 
 public sealed class OptimaMessagesTests

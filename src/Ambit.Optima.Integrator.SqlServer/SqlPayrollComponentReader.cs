@@ -5,7 +5,8 @@ using Microsoft.Data.SqlClient;
 namespace Ambit.Optima.Integrator.SqlServer;
 
 /// <summary>
-/// Reads the active payroll components, deductions and allowances alike, of every active company. A company's failure
+/// Reads every payroll component, deductions and allowances, active, inactive and withdrawn alike, of every active
+/// company. A company's failure
 /// stays that company's, and its components come back only when the whole read succeeded.
 /// </summary>
 public sealed class SqlPayrollComponentReader(SqlConnections connections, OptimaCompanies companies)
@@ -26,12 +27,12 @@ public sealed class SqlPayrollComponentReader(SqlConnections connections, Optima
             CONVERT(decimal(15, 2), TWP_AlgKwota) AS DefaultAmount,
             CONVERT(bit, CASE WHEN ISNULL(TWP_PKZP, 0) <> 0 THEN 1 ELSE 0 END) AS IsPkzp,
             CONVERT(bit, CASE WHEN ISNULL(TWP_ZajecieWynagr, 0) <> 0 THEN 1 ELSE 0 END) AS IsSeizure,
+            CONVERT(bit, CASE WHEN ISNULL(TWP_Nieaktywny, 0) = 0 THEN 1 ELSE 0 END) AS IsActive,
+            CONVERT(bit, CASE WHEN ISNULL(TWP_Wycofany, 0) <> 0 THEN 1 ELSE 0 END) AS IsWithdrawn,
             CONVERT(varchar(36), TWP_ImportRowId) AS ImportRowId,
             CONVERT(varchar(36), TWP_ImportRowId2) AS ImportRowId2
         FROM CDN.TypWyplata
-        WHERE ISNULL(TWP_Nieaktywny, 0) = 0
-          AND ISNULL(TWP_Wycofany, 0) = 0
-        ORDER BY Name;
+        ORDER BY Name, OptimaId;
         """;
 
     public async Task<IReadOnlyList<CompanyRead>> ReadAsync(CancellationToken cancellationToken)

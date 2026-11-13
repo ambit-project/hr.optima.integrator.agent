@@ -52,13 +52,52 @@ public sealed record DeductionAddResult(
     string? ErrorProcedure
 );
 
-/// <summary>One deduction to write to one company.</summary>
+/// <summary>
+/// Whether a month's item is a deduction or an allowance. Optima writes both the same way; only the payroll component
+/// differs, and it must be of the item's kind.
+/// </summary>
+public enum PayItemKind
+{
+    Deduction,
+    Allowance,
+}
+
+/// <summary>
+/// The allowances of an ExportAllowances operation, as the HR application gives them while the integrator holds it.
+/// One company and one month, like <see cref="DeductionsWork"/>.
+/// </summary>
+[UsedImplicitly(ImplicitUseTargetFlags.Members)] // Read from JSON.
+public sealed record AllowancesWork(
+    string? DatabaseName,
+    int Year,
+    int Month,
+    IReadOnlyList<AllowanceItem> Allowances
+);
+
+/// <summary>One employee's allowance for the operation's month, already computed by the HR application.</summary>
+[UsedImplicitly(ImplicitUseTargetFlags.Members)] // Read from JSON.
+public sealed record AllowanceItem(
+    Guid? AllowanceId,
+    Guid? EmployeeId,
+    string? EmployeeCode,
+    int? OptimaId,
+    decimal? Amount,
+    string? Currency = null
+)
+{
+    /// <summary>The same item in the shape the writer takes; its import key is derived the same way.</summary>
+    public DeductionItem AsItem() =>
+        new(AllowanceId, EmployeeId, EmployeeCode, OptimaId, Amount, Currency);
+}
+
+/// <summary>One deduction or allowance to write to one company.</summary>
 public sealed record DeductionAddRequest(
     Guid OperationId,
     string DatabaseName,
     int Year,
     int Month,
-    DeductionItem Deduction
+    DeductionItem Deduction,
+    PayItemKind Kind = PayItemKind.Deduction
 );
 
 /// <summary>The deduction was refused as a whole, before the company was touched; the message is safe to show.</summary>

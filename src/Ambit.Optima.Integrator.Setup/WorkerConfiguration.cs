@@ -48,6 +48,10 @@ public static class WorkerConfiguration
         else
             api[UrlKey] ??= AmbitSettings.DefaultUrl;
 
+        // Versions before 0.5 polled every PollSeconds; the Worker now reads PollIntervalMilliseconds and ignores the old
+        // key, which an upgrade removes so the file says what the service does.
+        api.Remove("PollSeconds");
+
         // A token is what switches the connection on. Without one the integrator keeps working for the local UI alone.
         if (ambit?.Token is { } token)
         {

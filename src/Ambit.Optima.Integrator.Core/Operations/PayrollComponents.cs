@@ -3,7 +3,8 @@ using JetBrains.Annotations;
 namespace Ambit.Optima.Integrator.Core.Operations;
 
 /// <summary>
-/// A deduction or an allowance as Optima defines it for one company. Its id means something only in that company.
+/// A deduction or an allowance as Optima defines it for one company, active or not. Its id means something only in
+/// that company.
 /// </summary>
 [UsedImplicitly(ImplicitUseTargetFlags.Members)] // Serialized for Ambit.
 public sealed record PayrollComponent(
@@ -16,6 +17,8 @@ public sealed record PayrollComponent(
     decimal? DefaultAmount,
     bool IsPkzp,
     bool IsSeizure,
+    bool IsActive,
+    bool IsWithdrawn,
     string? ImportRowId,
     string? ImportRowId2
 );

@@ -11,7 +11,8 @@ public sealed record ValidDeduction(
     int OptimaComponentId,
     int Year,
     int Month,
-    decimal Amount
+    decimal Amount,
+    PayItemKind Kind = PayItemKind.Deduction
 )
 {
     public DateOnly ValidFrom => new(Year, Month, 1);
@@ -35,24 +36,34 @@ public static class DeductionValidation
             ? Currency
             : item.Currency.Trim().ToUpperInvariant();
 
+        // An allowance is refused for the same reasons, under numbers ten higher.
+        var offset =
+            request.Kind == PayItemKind.Allowance
+                ? RejectionCodes.AllowanceIdsRequired - RejectionCodes.DeductionIdsRequired
+                : 0;
+        var idName = request.Kind == PayItemKind.Allowance ? "allowanceId" : "deductionId";
+
         if (item is not { DeductionId: { } deductionId, EmployeeId: { } employeeId })
             throw Rejected(
-                RejectionCodes.DeductionIdsRequired,
-                "deductionId and employeeId are required."
+                RejectionCodes.DeductionIdsRequired + offset,
+                $"{idName} and employeeId are required."
             );
         if (databaseName == "" || item.OptimaId is not { } componentId)
             throw Rejected(
-                RejectionCodes.DeductionTargetRequired,
+                RejectionCodes.DeductionTargetRequired + offset,
                 "databaseName and optimaId are required."
             );
         if (employeeCode == "" || employeeCode.Length > 20)
             throw Rejected(
-                RejectionCodes.DeductionEmployeeCodeInvalid,
+                RejectionCodes.DeductionEmployeeCodeInvalid + offset,
                 "employeeCode is required and has at most 20 characters."
             );
         if (request.Year is < 2000 or > 2998 || request.Month is < 1 or > 12)
-            throw Rejected(RejectionCodes.DeductionMonthInvalid, "The month is not valid.");
-        // The component makes it a deduction, so the amount itself is positive.
+            throw Rejected(
+                RejectionCodes.DeductionMonthInvalid + offset,
+                "The month is not valid."
+            );
+        // The component decides whether it is a deduction or an allowance, so the amount itself is positive.
         if (
             item.Amount is not { } amount
             || amount <= 0
@@ -60,13 +71,13 @@ public static class DeductionValidation
             || decimal.Round(amount, 2) != amount
         )
             throw Rejected(
-                RejectionCodes.DeductionAmountInvalid,
+                RejectionCodes.DeductionAmountInvalid + offset,
                 "amount must be positive, with at most two decimals."
             );
         if (currency != Currency)
             throw Rejected(
-                RejectionCodes.DeductionCurrencyNotSupported,
-                "Only PLN deductions can be exported."
+                RejectionCodes.DeductionCurrencyNotSupported + offset,
+                "Only PLN amounts can be exported."
             );
 
         return new ValidDeduction(
@@ -79,7 +90,8 @@ public static class DeductionValidation
             componentId,
             request.Year,
             request.Month,
-            amount
+            amount,
+            request.Kind
         );
     }
 

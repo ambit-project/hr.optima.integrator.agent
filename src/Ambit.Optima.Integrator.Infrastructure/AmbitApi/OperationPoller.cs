@@ -23,20 +23,28 @@ public sealed class OperationPoller(
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                // After an operation the next one is asked for at once; only an empty queue waits.
-                if (!await RunNextAsync(stoppingToken))
-                    await Task.Delay(
-                        TimeSpan.FromSeconds(options.Value.PollSeconds),
-                        clock,
-                        stoppingToken
-                    );
+                var wait = Wait(await RunNextAsync(stoppingToken));
+                if (wait > TimeSpan.Zero)
+                    await Task.Delay(wait, clock, stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
-    /// <summary>True when an operation was run.</summary>
-    public async Task<bool> RunNextAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// After an operation the next one is asked for at once and an empty queue waits the short poll interval. When
+    /// Ambit could not be reached or refused the token, the agent waits the longer retry time, so an API that is down
+    /// is not asked twice a second.
+    /// </summary>
+    public TimeSpan Wait(PollOutcome outcome) =>
+        outcome switch
+        {
+            PollOutcome.Ran => TimeSpan.Zero,
+            PollOutcome.Idle => TimeSpan.FromMilliseconds(options.Value.PollIntervalMilliseconds),
+            _ => TimeSpan.FromSeconds(options.Value.RetrySeconds),
+        };
+
+    public async Task<PollOutcome> RunNextAsync(CancellationToken cancellationToken)
     {
         AgentOperation? operation;
         try
@@ -46,11 +54,11 @@ public sealed class OperationPoller(
         catch (Exception exception) when (IsTransient(exception, cancellationToken))
         {
             logger.LogWarning("Asking Ambit for work failed: {Error}.", exception.GetType().Name);
-            return false;
+            return PollOutcome.Unreachable;
         }
 
         if (operation is null)
-            return false;
+            return PollOutcome.Idle;
 
         logger.LogInformation(
             "Running operation {OperationId} ({Kind}), attempt {Attempt}.",
@@ -60,7 +68,7 @@ public sealed class OperationPoller(
         );
         var result = await runner.RunAsync(operation, cancellationToken);
         await ReportAsync(operation, result, cancellationToken);
-        return true;
+        return PollOutcome.Ran;
     }
 
     private async Task ReportAsync(
@@ -101,4 +109,16 @@ public sealed class OperationPoller(
     private static bool IsTransient(Exception exception, CancellationToken cancellationToken) =>
         exception is HttpRequestException
         || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested);
+}
+
+public enum PollOutcome
+{
+    /// <summary>An operation was run and reported.</summary>
+    Ran,
+
+    /// <summary>Nothing waited.</summary>
+    Idle,
+
+    /// <summary>Ambit could not be reached, timed out or refused the token (401).</summary>
+    Unreachable,
 }

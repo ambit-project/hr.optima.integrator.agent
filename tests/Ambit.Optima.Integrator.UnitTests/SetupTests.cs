@@ -21,6 +21,7 @@ public sealed class SetupTests
                 "grants.company-revoke.sql",
                 "grants.company.sql",
                 "migrations.0001-initial-schema.sql",
+                "migrations.0002-deduction-call-kind.sql",
             ],
             DatabaseInstaller.EmbeddedScripts
         );
@@ -135,10 +136,25 @@ public sealed class SetupTests
     }
 
     [Fact]
+    public void An_upgrade_drops_the_old_poll_setting()
+    {
+        const string existing = """
+            {"AmbitApi":{"Enabled":true,"BaseUrl":"https://own.example","Key":"kept","PollSeconds":30}}
+            """;
+
+        var api = JsonNode.Parse(
+            WorkerConfiguration.Merge(existing, ".", new AmbitSettings(null, null))
+        )!["AmbitApi"]!.AsObject();
+
+        Assert.False(api.ContainsKey("PollSeconds"));
+        Assert.Equal("kept", api["Key"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void An_upgrade_with_nothing_given_keeps_the_connection()
     {
         const string existing = """
-            {"AmbitApi":{"Enabled":true,"BaseUrl":"https://own.example","Key":"kept","PollSeconds":5}}
+            {"AmbitApi":{"Enabled":true,"BaseUrl":"https://own.example","Key":"kept","RetrySeconds":5}}
             """;
 
         var api = JsonNode.Parse(
@@ -148,14 +164,14 @@ public sealed class SetupTests
         Assert.True(api["Enabled"]!.GetValue<bool>());
         Assert.Equal("https://own.example", api["BaseUrl"]!.GetValue<string>());
         Assert.Equal("kept", api["Key"]!.GetValue<string>());
-        Assert.Equal(5, api["PollSeconds"]!.GetValue<int>());
+        Assert.Equal(5, api["RetrySeconds"]!.GetValue<int>());
     }
 
     [Fact]
     public void A_new_token_replaces_the_old_one_and_keeps_the_rest()
     {
         const string existing = """
-            {"AmbitApi":{"Enabled":false,"BaseUrl":"https://own.example","Key":"old","PollSeconds":5}}
+            {"AmbitApi":{"Enabled":false,"BaseUrl":"https://own.example","Key":"old","RetrySeconds":5}}
             """;
 
         var api = JsonNode.Parse(
@@ -165,7 +181,7 @@ public sealed class SetupTests
         Assert.True(api["Enabled"]!.GetValue<bool>());
         Assert.Equal(Token, api["Key"]!.GetValue<string>());
         Assert.Equal("https://own.example", api["BaseUrl"]!.GetValue<string>());
-        Assert.Equal(5, api["PollSeconds"]!.GetValue<int>());
+        Assert.Equal(5, api["RetrySeconds"]!.GetValue<int>());
     }
 
     [Theory]

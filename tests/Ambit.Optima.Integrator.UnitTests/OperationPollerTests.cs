@@ -4,9 +4,11 @@ using System.Text.Json;
 using Ambit.Optima.Integrator.Core.Deductions;
 using Ambit.Optima.Integrator.Core.Employees;
 using Ambit.Optima.Integrator.Core.Operations;
+using Ambit.Optima.Integrator.Core.Payrolls;
 using Ambit.Optima.Integrator.Infrastructure.AmbitApi;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Ambit.Optima.Integrator.UnitTests;
 
@@ -27,6 +29,8 @@ public sealed class OperationPollerTests
         0,
         null,
         false,
+        false,
+        true,
         false,
         null,
         null
@@ -73,8 +77,25 @@ public sealed class OperationPollerTests
             CancellationToken cancellationToken
         ) => Task.FromResult<DeductionsWork?>(null);
 
-        public Task<AgentOperation?> ClaimAsync(CancellationToken cancellationToken) =>
-            ClaimFailure is null ? Task.FromResult(Next) : throw ClaimFailure;
+        public Task<AllowancesWork?> GetAllowancesAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => Task.FromResult<AllowancesWork?>(null);
+
+        public Task<PayrollPeriod?> GetPayrollPeriodAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => Task.FromResult<PayrollPeriod?>(null);
+
+        private int _claimCalls;
+
+        public int ClaimCalls => Volatile.Read(ref _claimCalls);
+
+        public Task<AgentOperation?> ClaimAsync(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _claimCalls);
+            return ClaimFailure is null ? Task.FromResult(Next) : throw ClaimFailure;
+        }
 
         public Task<bool> ReportAsync(
             Guid operationId,
@@ -97,6 +118,7 @@ public sealed class OperationPollerTests
                 reader,
                 new NoEmployees(),
                 new NoDeductions(),
+                new NoPayrolls(),
                 api,
                 Options.Create(new WriteOptions()),
                 TimeProvider.System
@@ -105,6 +127,96 @@ public sealed class OperationPollerTests
             TimeProvider.System,
             NullLogger<OperationPoller>.Instance
         );
+
+    private static OperationPoller TimedPoller(FakeApi api, TimeProvider clock) =>
+        new(
+            api,
+            new OperationRunner(
+                new FakeReader(),
+                new NoEmployees(),
+                new NoDeductions(),
+                new NoPayrolls(),
+                api,
+                Options.Create(new WriteOptions()),
+                clock
+            ),
+            Options.Create(new AmbitApiOptions()),
+            clock,
+            NullLogger<OperationPoller>.Instance
+        );
+
+    /// <summary>The poller runs on its own; this waits, in real time, for it to catch up with the fake clock.</summary>
+    private static async Task WaitForClaimsAsync(FakeApi api, int count)
+    {
+        for (var i = 0; i < 200 && api.ClaimCalls < count; i++)
+            await Task.Delay(10);
+        // Give a claim that should not happen the chance to show up.
+        await Task.Delay(50);
+    }
+
+    [Fact]
+    public async Task An_empty_queue_is_asked_again_after_half_a_second()
+    {
+        var clock = new FakeTimeProvider();
+        var api = new FakeApi();
+        using var poller = TimedPoller(api, clock);
+
+        await poller.StartAsync(CancellationToken.None);
+        await WaitForClaimsAsync(api, 1);
+        Assert.Equal(1, api.ClaimCalls);
+
+        clock.Advance(TimeSpan.FromMilliseconds(499));
+        await WaitForClaimsAsync(api, 2);
+        Assert.Equal(1, api.ClaimCalls);
+
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        await WaitForClaimsAsync(api, 2);
+        Assert.Equal(2, api.ClaimCalls);
+
+        await poller.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Ambit_out_of_reach_is_asked_again_only_after_the_retry_time()
+    {
+        var clock = new FakeTimeProvider();
+        var api = new FakeApi { ClaimFailure = new HttpRequestException() };
+        using var poller = TimedPoller(api, clock);
+
+        await poller.StartAsync(CancellationToken.None);
+        await WaitForClaimsAsync(api, 1);
+
+        clock.Advance(TimeSpan.FromSeconds(59));
+        await WaitForClaimsAsync(api, 2);
+        Assert.Equal(1, api.ClaimCalls);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await WaitForClaimsAsync(api, 2);
+        Assert.Equal(2, api.ClaimCalls);
+
+        await poller.StopAsync(CancellationToken.None);
+    }
+
+    [Theory]
+    [InlineData(500, true)]
+    [InlineData(100, true)]
+    [InlineData(99, false)]
+    [InlineData(60_001, false)]
+    public void The_poll_interval_is_checked_at_start(int milliseconds, bool valid)
+    {
+        var result = new AmbitApiOptionsValidator().Validate(
+            null,
+            new AmbitApiOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://api.example",
+                Key = "key",
+                PollIntervalMilliseconds = milliseconds,
+            }
+        );
+
+        Assert.Equal(valid, result.Succeeded);
+    }
 
     private static CompanyRead ReadCompany(string name) =>
         new(name, CompanyReadStatus.Read, "1234567890", null, [Housing]);
@@ -115,7 +227,10 @@ public sealed class OperationPollerTests
         var api = new FakeApi();
         var reader = new FakeReader();
 
-        Assert.False(await Poller(api, reader).RunNextAsync(CancellationToken.None));
+        Assert.Equal(
+            PollOutcome.Idle,
+            await Poller(api, reader).RunNextAsync(CancellationToken.None)
+        );
         Assert.Equal(0, reader.Calls);
         Assert.Empty(api.Reports);
     }
@@ -126,7 +241,10 @@ public sealed class OperationPollerTests
         var api = new FakeApi { Next = Read, ClaimFailure = new HttpRequestException() };
         var reader = new FakeReader();
 
-        Assert.False(await Poller(api, reader).RunNextAsync(CancellationToken.None));
+        Assert.Equal(
+            PollOutcome.Unreachable,
+            await Poller(api, reader).RunNextAsync(CancellationToken.None)
+        );
         Assert.Equal(0, reader.Calls);
     }
 
@@ -135,7 +253,8 @@ public sealed class OperationPollerTests
     {
         var api = new FakeApi { Next = Read };
 
-        Assert.True(
+        Assert.Equal(
+            PollOutcome.Ran,
             await Poller(api, new FakeReader(ReadCompany("CDN_A")))
                 .RunNextAsync(CancellationToken.None)
         );
