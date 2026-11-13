@@ -3,6 +3,7 @@ using Ambit.Optima.Integrator.Core;
 using Ambit.Optima.Integrator.Core.Deductions;
 using Ambit.Optima.Integrator.Core.Employees;
 using Ambit.Optima.Integrator.Core.Operations;
+using Ambit.Optima.Integrator.Core.Payrolls;
 using Ambit.Optima.Integrator.Setup;
 using Ambit.Optima.Integrator.SqlServer;
 using Dapper;
@@ -140,7 +141,7 @@ public sealed class FakeOptimaTests(FakeOptimaFixture optima) : IClassFixture<Fa
     public async Task The_migrations_are_recorded_once()
     {
         Assert.Equal(
-            1,
+            2,
             await CountAsync(
                 DatabaseInstaller.IntegratorDatabase,
                 "SELECT COUNT(*) FROM dbo.SchemaVersions;"
@@ -309,8 +310,16 @@ public sealed class FakeOptimaTests(FakeOptimaFixture optima) : IClassFixture<Fa
         Assert.Equal(CompanyReadStatus.Read, alpha.Status);
         Assert.Equal("1111111111", alpha.TaxNumber);
         Assert.Equal(
-            ["Dodatek stażowy", "Potrącenie za mieszkanie"],
+            ["Dodatek stażowy", "Potrącenie za mieszkanie", "Stare potrącenie"],
             alpha.Components.Select(c => c.Name)
+        );
+        Assert.Contains(
+            alpha.Components,
+            c => c is { OptimaId: 340, IsActive: false, IsWithdrawn: false }
+        );
+        Assert.Contains(
+            alpha.Components,
+            c => c is { OptimaId: 338, IsActive: true, IsWithdrawn: false }
         );
         var deduction = alpha.Components.Single(c => c.OptimaId == 338);
         Assert.True(deduction.IsDeduction);
@@ -423,6 +432,103 @@ public sealed class FakeOptimaTests(FakeOptimaFixture optima) : IClassFixture<Fa
 
         Assert.Equal("Failed", result.Status);
         Assert.Equal(FailureCodes.TaxNumberMismatch, result.ErrorNumber);
+    }
+
+    [DockerFact]
+    public async Task A_month_of_allowances_is_written_once_and_only_to_an_allowance()
+    {
+        var person = Employee("DODATEK1", FakeOptimaFixture.Alpha);
+        await optima.Sql.EmployeeWriter().AddAsync(person, CancellationToken.None);
+        var writer = optima.Sql.DeductionWriter();
+
+        Task<DeductionAddResult> AddAsync(DeductionItem item) =>
+            writer.AddAsync(
+                new DeductionAddRequest(
+                    Guid.NewGuid(),
+                    FakeOptimaFixture.Alpha,
+                    2026,
+                    5,
+                    item,
+                    PayItemKind.Allowance
+                ),
+                CancellationToken.None
+            );
+
+        var item = new DeductionItem(Guid.NewGuid(), person.EmployeeId, "DODATEK1", 339, 150m);
+        var first = await AddAsync(item);
+        var again = await AddAsync(item);
+        var onDeduction = await AddAsync(
+            item with
+            {
+                DeductionId = Guid.NewGuid(),
+                OptimaId = 338,
+            }
+        );
+
+        Assert.Equal("Succeeded", first.Status);
+        Assert.Equal("AlreadyExists", again.Status);
+        Assert.Equal(first.OptimaAdditionId, again.OptimaAdditionId);
+        Assert.Equal("ComponentNotFound", onDeduction.Status);
+        Assert.Equal(
+            "Allowance",
+            await optima.QueryAsync<string>(
+                DatabaseInstaller.IntegratorDatabase,
+                "SELECT DISTINCT kind FROM integrator.deduction_call WHERE deduction_id = @id;",
+                new { id = item.DeductionId }
+            )
+        );
+    }
+
+    [DockerFact]
+    public async Task A_month_of_payroll_lists_comes_with_payouts_and_elements()
+    {
+        var read = await optima
+            .Sql.PayrollReader()
+            .ReadAsync(FakeOptimaFixture.Alpha, 2026, 11, CancellationToken.None);
+
+        Assert.Equal(PayrollReadStatus.Read, read.Status);
+        var payrolls = read.Payrolls!;
+        Assert.Equal("1111111111", payrolls.TaxNumber);
+        Assert.Equal([41, 42], payrolls.Lists.Select(l => l.OptimaId));
+
+        var october = payrolls.Lists[0];
+        Assert.Equal("EtatLP/10/2026", october.Number);
+        Assert.Equal(new DateOnly(2026, 10, 1), october.PeriodFrom);
+        Assert.Equal(new DateOnly(2026, 11, 10), october.DocumentDate);
+        Assert.True(october.IsClosed);
+        Assert.Null(payrolls.Lists[1].Name);
+        Assert.False(payrolls.Lists[1].IsClosed);
+        Assert.Empty(payrolls.Lists[1].Payouts);
+
+        var known = october.Payouts.Single(p => p.OptimaId == 901);
+        Assert.Equal(Guid.Parse("c0000000-0000-4000-8000-000000000001"), known.EmployeeId);
+        Assert.Equal("LISTA1", known.EmployeeCode);
+        Assert.Equal((6500.00m, 4712.34m, true), (known.Gross, known.Net, known.IsClosed));
+        Assert.Equal(
+            [(5001, (int?)339, 150.00m), (5002, null, 6350.00m)],
+            known.Elements.Select(e => (e.OptimaId, e.ComponentOptimaId, e.Amount))
+        );
+        Assert.Null(october.Payouts.Single(p => p.OptimaId == 902).EmployeeId);
+    }
+
+    [DockerFact]
+    public async Task Payroll_lists_of_a_company_out_of_reach_are_not_read()
+    {
+        var reader = optima.Sql.PayrollReader();
+
+        Assert.Equal(
+            PayrollReadStatus.NoAccess,
+            (
+                await reader.ReadAsync(FakeOptimaFixture.Gone, 2026, 11, CancellationToken.None)
+            ).Status
+        );
+        Assert.Equal(
+            PayrollReadStatus.NotListed,
+            (await reader.ReadAsync("CDN_Off", 2026, 11, CancellationToken.None)).Status
+        );
+        var beta = await reader.ReadAsync(FakeOptimaFixture.Beta, 2026, 11, CancellationToken.None);
+        Assert.Equal(PayrollReadStatus.Failed, beta.Status);
+        Assert.Equal(FailureCodes.TaxNumberMismatch, beta.ErrorNumber);
     }
 
     private static async Task WaitForAsync(Func<Task<bool>> condition)

@@ -6,9 +6,12 @@ the result. It opens no port.
 
 What it does today:
 
-- reads the payroll components (deductions and allowances) each Optima company defines,
+- reads every payroll component (deductions and allowances, active or not) each Optima company defines,
+- reads one company's payroll lists of a month, with each employee's payout and its elements,
 - adds employees to one company or to every active company,
-- writes a month's deductions to employees in one company.
+- writes a month's deductions and allowances to employees in one company.
+
+It asks the web application for work every 500 ms by default.
 
 Writes are off by default and are switched on locally, on the client's machine.
 

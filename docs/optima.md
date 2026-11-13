@@ -55,13 +55,39 @@ validity), written by `CDN.ImportDataDodatki` and `CDN.ImportDataDodatkiHist` in
 A deduction already exported is not changed by a later export: correct it in Optima, or remove it there and export
 again. Each export adds one `CDN.Dodatki` row per deduction and month.
 
+## Allowances
+
+An allowance is written exactly like a deduction: the same two rows, the same procedures and an import key derived the
+same way, from the allowance and the month. Comarch's procedures accept any payroll component and check neither kind,
+so the integrator does: the component must be an active, not withdrawn allowance (`TWP_AlgPotracenie <> 1`). An
+allowance mapped to a deduction component, or a deduction to an allowance, ends as `ComponentNotFound`. So does a
+component without both import ids (`TWP_ImportRowId`, `TWP_ImportRowId2`), which `CDN.ImportDataDodatkiHist` requires.
+`integrator.deduction_call.kind` records which of the two a call was.
+
 ## Payroll components
 
-`CDN.TypWyplata`, without inactive or withdrawn rows: id, name, short name, `isDeduction` (`TWP_AlgPotracenie = 1`),
-source kind, standard id, default amount, PKZP and seizure flags, and Comarch's import ids.
+`CDN.TypWyplata`, every row: id, name, short name, `isDeduction` (`TWP_AlgPotracenie = 1`), `isActive`
+(`TWP_Nieaktywny` 0 or empty), `isWithdrawn` (`TWP_Wycofany` not 0), source kind, standard id, default amount, PKZP and
+seizure flags, and Comarch's import ids.
+
+## Payroll lists
+
+Read only, one company and one month:
+
+| Table | Columns | Meaning |
+| --- | --- | --- |
+| `CDN.ListyPlac` | `LPL_LplId`, `LPL_NumerPelny`, `LPL_Nazwa`, `LPL_DataOd`, `LPL_DataDo`, `LPL_DataDok`, `LPL_Zamknieta`, `LPL_Rok`, `LPL_Miesiac` | The list. `LPL_Rok` / `LPL_Miesiac` is the month it is declared in and selects it; `LPL_DataOd` to `LPL_DataDo` is the period it covers, often the month before. `LPL_Zamknieta` is when it was closed, empty while open. |
+| `CDN.Wyplaty` | `WPL_WplId`, `WPL_LplId`, `WPL_PraId`, `WPL_Brutto`, `WPL_Wartosc`, `WPL_Zamknieta` | One employee's payout on a list. `WPL_Brutto` is the gross, `WPL_Wartosc` what is paid out (net). |
+| `CDN.WypElementy` | `WPE_WpeId`, `WPE_WplId`, `WPE_TwpId`, `WPE_Nazwa`, `WPE_Wartosc` | The payout's elements. `WPE_Wartosc` is the element's gross value, `WPE_TwpId` its payroll component, empty for some of Optima's own elements. |
+| `CDN.PracKod` | `PRA_PraId`, `PRA_Kod`, `PRA_ImportRowId` | The employee's acronym, and the application's id when the integrator added the employee. |
+
+The integrator's rights on these tables are column-level `SELECT`s (`db/grants/company.sql`). The company's tax number
+is checked first, as before a write.
 
 ## Not verified yet
 
 - A payroll run for an employee added by the integrator.
-- A payroll run with a deduction written by the integrator rather than by hand with the same procedures.
+- A payroll run with a deduction or an allowance written by the integrator rather than by hand with the same
+  procedures.
+- Correction lists and corrected payouts: they are read as ordinary lists and payouts.
 - Whether an Optima update keeps the column-level `GRANT`s.

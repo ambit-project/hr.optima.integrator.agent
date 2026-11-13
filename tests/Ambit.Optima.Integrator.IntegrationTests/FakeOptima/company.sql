@@ -42,6 +42,35 @@ CREATE TABLE CDN.TypWyplata
     TWP_Nieaktywny tinyint NULL,
     TWP_Wycofany tinyint NULL
 );
+CREATE TABLE CDN.ListyPlac
+(
+    LPL_LplId int PRIMARY KEY,
+    LPL_NumerPelny nvarchar(30) NULL,
+    LPL_Nazwa nvarchar(128) NOT NULL,
+    LPL_DataOd datetime NOT NULL,
+    LPL_DataDo datetime NOT NULL,
+    LPL_DataDok datetime NOT NULL,
+    LPL_Zamknieta datetime NULL,
+    LPL_Rok int NOT NULL,
+    LPL_Miesiac smallint NOT NULL
+);
+CREATE TABLE CDN.Wyplaty
+(
+    WPL_WplId int PRIMARY KEY,
+    WPL_LplId int NOT NULL,
+    WPL_PraId int NOT NULL,
+    WPL_Brutto decimal(15, 2) NOT NULL,
+    WPL_Wartosc decimal(15, 2) NOT NULL,
+    WPL_Zamknieta tinyint NOT NULL
+);
+CREATE TABLE CDN.WypElementy
+(
+    WPE_WpeId int PRIMARY KEY,
+    WPE_WplId int NOT NULL,
+    WPE_TwpId int NULL,
+    WPE_Nazwa nvarchar(128) NOT NULL,
+    WPE_Wartosc decimal(15, 2) NOT NULL
+);
 CREATE TABLE CDN.Dodatki
 (
     DOD_DodId int IDENTITY PRIMARY KEY,
@@ -134,5 +163,27 @@ INSERT CDN.TypWyplata
 VALUES
     (338, N'Potrącenie za mieszkanie ', N'pot.mieszkanie', 4, 0, 0.00, 0, 0,
      '8468F49B-C16E-4529-8197-D94D93DDADD8', '6E5E45D1-E075-4CCC-8209-17FE740CDF41', 1, 0, 0),
-    (339, N'Dodatek stażowy', NULL, 4, 12, 150.00, 0, 0, 'A0000000-0000-4000-8000-000000000339', NULL, 0, 0, 0),
+    (339, N'Dodatek stażowy', NULL, 4, 12, 150.00, 0, 0, 'A0000000-0000-4000-8000-000000000339',
+     'B0000000-0000-4000-8000-000000000339', 0, 0, 0),
     (340, N'Stare potrącenie', NULL, 4, NULL, NULL, 0, 0, NULL, NULL, 1, 1, 0);
+-- Payroll lists. The October list is declared in November (LPL_Rok / LPL_Miesiac); a December list is left out of a
+-- November read. Employees 9001 and 9002 stand for people the tests do not add: one with the HR application's id, one
+-- without.
+SET IDENTITY_INSERT CDN.PracKod ON;
+INSERT CDN.PracKod (PRA_PraId, PRA_Kod, PRA_ImportRowId) VALUES
+    (9001, N'LISTA1', 'C0000000-0000-4000-8000-000000000001'),
+    (9002, N'LISTA2', NULL);
+SET IDENTITY_INSERT CDN.PracKod OFF;
+INSERT CDN.ListyPlac (LPL_LplId, LPL_NumerPelny, LPL_Nazwa, LPL_DataOd, LPL_DataDo, LPL_DataDok, LPL_Zamknieta, LPL_Rok,
+                      LPL_Miesiac) VALUES
+    (41, N'EtatLP/10/2026', N'Etat', '20261001', '20261031', '20261110', '20261110', 2026, 11),
+    (42, N'UCPLP/11/2026', N'', '20261101', '20261130', '20261130', NULL, 2026, 11),
+    (43, N'EtatLP/12/2026', N'Etat', '20261201', '20261231', '20261231', NULL, 2026, 12);
+INSERT CDN.Wyplaty (WPL_WplId, WPL_LplId, WPL_PraId, WPL_Brutto, WPL_Wartosc, WPL_Zamknieta) VALUES
+    (901, 41, 9001, 6500.00, 4712.34, 1),
+    (902, 41, 9002, 4806.00, 3773.85, 1),
+    (903, 43, 9001, 6500.00, 4712.34, 0);
+INSERT CDN.WypElementy (WPE_WpeId, WPE_WplId, WPE_TwpId, WPE_Nazwa, WPE_Wartosc) VALUES
+    (5001, 901, 339, N'Dodatek stażowy', 150.00),
+    (5002, 901, NULL, N'Wynagrodzenie zasadnicze', 6350.00),
+    (5003, 902, NULL, N'Wynagrodzenie zasadnicze', 4806.00);

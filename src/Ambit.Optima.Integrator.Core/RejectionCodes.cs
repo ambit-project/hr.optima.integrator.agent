@@ -21,6 +21,14 @@ public static class RejectionCodes
     public const int DeductionAmountInvalid = 51024;
     public const int DeductionCurrencyNotSupported = 51025;
 
+    /// <summary>An allowance is refused for the same reasons as a deduction, ten numbers higher.</summary>
+    public const int AllowanceIdsRequired = 51030;
+    public const int AllowanceTargetRequired = 51031;
+    public const int AllowanceEmployeeCodeInvalid = 51032;
+    public const int AllowanceMonthInvalid = 51033;
+    public const int AllowanceAmountInvalid = 51034;
+    public const int AllowanceCurrencyNotSupported = 51035;
+
     public const int NoCompanyMatches = 51401;
 }
 

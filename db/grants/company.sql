@@ -29,3 +29,9 @@ BEGIN
     GRANT SELECT ON CDN.Dodatki (DOD_DodId, DOD_PraId) TO [$ServiceLogin$];
     GRANT SELECT ON CDN.DodatkiHist (DOH_DohId, DOH_DodId, DOH_ImportRowId) TO [$ServiceLogin$];
 END;
+-- Payroll lists: read only, the columns the Worker sends.
+GRANT SELECT ON CDN.ListyPlac (
+    LPL_LplId, LPL_NumerPelny, LPL_Nazwa, LPL_DataOd, LPL_DataDo, LPL_DataDok, LPL_Zamknieta, LPL_Rok, LPL_Miesiac
+) TO [$ServiceLogin$];
+GRANT SELECT ON CDN.Wyplaty (WPL_WplId, WPL_LplId, WPL_PraId, WPL_Brutto, WPL_Wartosc, WPL_Zamknieta) TO [$ServiceLogin$];
+GRANT SELECT ON CDN.WypElementy (WPE_WpeId, WPE_WplId, WPE_TwpId, WPE_Nazwa, WPE_Wartosc) TO [$ServiceLogin$];

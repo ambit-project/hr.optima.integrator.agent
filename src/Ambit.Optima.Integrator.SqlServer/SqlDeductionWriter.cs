@@ -8,8 +8,8 @@ using Microsoft.Data.SqlClient;
 namespace Ambit.Optima.Integrator.SqlServer;
 
 /// <summary>
-/// Gives one employee one month's deduction in one company, and records the outcome in
-/// <c>integrator.deduction_call</c>.
+/// Gives one employee one month's deduction or allowance in one company, and records the outcome in
+/// <c>integrator.deduction_call</c>, whose <c>kind</c> says which.
 /// </summary>
 /// <remarks>
 /// <para>In Optima a deduction given to an employee is a row of <c>CDN.Dodatki</c> (the employee's component) with a row
@@ -18,7 +18,9 @@ namespace Ambit.Optima.Integrator.SqlServer;
 /// same key, derived from the deduction and the month, so a deduction exported twice for one month is written once.</para>
 /// <para>The order of work: validate; report again what this operation already finished; stop without access or with a
 /// different tax number; then, in one transaction on the company database, stop if the key is there, find the
-/// employee, find the component, which must be an active deduction, and write both rows.</para>
+/// employee, find the component, which must be active and of the item's kind, and write both rows.</para>
+/// <para>An allowance is written exactly like a deduction: Comarch's procedures take any payroll component and check
+/// neither kind.</para>
 /// </remarks>
 public sealed class SqlDeductionWriter(SqlConnections connections, OptimaCompanies companies)
     : IDeductionWriter
@@ -78,20 +80,20 @@ public sealed class SqlDeductionWriter(SqlConnections connections, OptimaCompani
                 SET status = @Status, attempt = attempt + 1, database_name = @DatabaseName, employee_id = @EmployeeId,
                     optima_key = @OptimaKey, period_year = @Year, period_month = @Month,
                     optima_component_id = @OptimaComponentId, amount = @Amount,
-                    optima_employee_id = @OptimaEmployeeId, optima_addition_id = @OptimaAdditionId,
+                    optima_employee_id = @OptimaEmployeeId, optima_addition_id = @OptimaAdditionId, kind = @Kind,
                     warning_codes = @WarningCodes, error_number = @ErrorNumber, error_procedure = @ErrorProcedure,
                     error_line = @ErrorLine, started_at = SYSUTCDATETIME(), finished_at = SYSUTCDATETIME()
                 WHERE operation_id = @OperationId AND deduction_id = @DeductionId;
 
                 IF @@ROWCOUNT = 0
                     INSERT integrator.deduction_call
-                        (operation_id, deduction_id, database_name, employee_id, optima_key, period_year, period_month,
-                         optima_component_id, amount, status, optima_employee_id, optima_addition_id, warning_codes,
-                         error_number, error_procedure, error_line, finished_at)
+                        (operation_id, deduction_id, kind, database_name, employee_id, optima_key, period_year,
+                         period_month, optima_component_id, amount, status, optima_employee_id, optima_addition_id,
+                         warning_codes, error_number, error_procedure, error_line, finished_at)
                     VALUES
-                        (@OperationId, @DeductionId, @DatabaseName, @EmployeeId, @OptimaKey, @Year, @Month,
-                         @OptimaComponentId, @Amount, @Status, @OptimaEmployeeId, @OptimaAdditionId, @WarningCodes,
-                         @ErrorNumber, @ErrorProcedure, @ErrorLine, SYSUTCDATETIME());
+                        (@OperationId, @DeductionId, @Kind, @DatabaseName, @EmployeeId, @OptimaKey, @Year,
+                         @Month, @OptimaComponentId, @Amount, @Status, @OptimaEmployeeId, @OptimaAdditionId,
+                         @WarningCodes, @ErrorNumber, @ErrorProcedure, @ErrorLine, SYSUTCDATETIME());
 
                 SELECT {ResultColumns}
                 FROM integrator.deduction_call
@@ -108,6 +110,7 @@ public sealed class SqlDeductionWriter(SqlConnections connections, OptimaCompani
                     deduction.Month,
                     deduction.OptimaComponentId,
                     deduction.Amount,
+                    Kind = deduction.Kind.ToString(),
                     outcome.Status,
                     outcome.OptimaEmployeeId,
                     outcome.OptimaAdditionId,
@@ -204,8 +207,9 @@ public sealed class SqlDeductionWriter(SqlConnections connections, OptimaCompani
                 ? null
                 : MatchedByAcronymOnly;
 
-            // Comarch's procedure finds the component by its import ids, so they are read here from its id. An allowance
-            // mapped by mistake is not found, because only an active deduction qualifies.
+            // Comarch's procedure finds the component by its import ids, so they are read here from its id, and it
+            // refuses a component without both. An allowance mapped to a deduction component, or the other way round,
+            // is not found, because only an active component of the item's kind qualifies.
             var component = await connection.QuerySingleOrDefaultAsync<Component>(
                 Command(
                     """
@@ -213,11 +217,17 @@ public sealed class SqlDeductionWriter(SqlConnections connections, OptimaCompani
                         TWP_ImportRowId AS ImportRowId, TWP_ImportRowId2 AS ImportRowId2
                     FROM CDN.TypWyplata
                     WHERE TWP_TwpId = @componentId
-                      AND TWP_AlgPotracenie = 1
+                      AND CASE WHEN TWP_AlgPotracenie = 1 THEN 1 ELSE 0 END = @isDeduction
                       AND ISNULL(TWP_Nieaktywny, 0) = 0
-                      AND ISNULL(TWP_Wycofany, 0) = 0;
+                      AND ISNULL(TWP_Wycofany, 0) = 0
+                      AND TWP_ImportRowId IS NOT NULL
+                      AND TWP_ImportRowId2 IS NOT NULL;
                     """,
-                    new { componentId = deduction.OptimaComponentId },
+                    new
+                    {
+                        componentId = deduction.OptimaComponentId,
+                        isDeduction = deduction.Kind == PayItemKind.Deduction ? 1 : 0,
+                    },
                     transaction,
                     cancellationToken
                 )

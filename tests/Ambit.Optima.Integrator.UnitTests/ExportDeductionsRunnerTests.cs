@@ -1,6 +1,7 @@
 using Ambit.Optima.Integrator.Core.Deductions;
 using Ambit.Optima.Integrator.Core.Employees;
 using Ambit.Optima.Integrator.Core.Operations;
+using Ambit.Optima.Integrator.Core.Payrolls;
 using Ambit.Optima.Integrator.Infrastructure.AmbitApi;
 using Microsoft.Extensions.Options;
 
@@ -25,7 +26,11 @@ public sealed class ExportDeductionsRunnerTests
     private static DeductionsWork Month(params DeductionItem[] items) =>
         new("CDN_Firma", 2026, 11, items);
 
-    private sealed class FakeApi(DeductionsWork? work, Exception? failure = null) : IAmbitApiClient
+    private sealed class FakeApi(
+        DeductionsWork? work,
+        Exception? failure = null,
+        AllowancesWork? allowances = null
+    ) : IAmbitApiClient
     {
         public Task<AgentOperation?> ClaimAsync(CancellationToken cancellationToken) =>
             Task.FromResult<AgentOperation?>(null);
@@ -39,6 +44,16 @@ public sealed class ExportDeductionsRunnerTests
             Guid operationId,
             CancellationToken cancellationToken
         ) => failure is null ? Task.FromResult(work) : throw failure;
+
+        public Task<AllowancesWork?> GetAllowancesAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => failure is null ? Task.FromResult(allowances) : throw failure;
+
+        public Task<PayrollPeriod?> GetPayrollPeriodAsync(
+            Guid operationId,
+            CancellationToken cancellationToken
+        ) => Task.FromResult<PayrollPeriod?>(null);
 
         public Task<bool> ReportAsync(
             Guid operationId,
@@ -91,6 +106,7 @@ public sealed class ExportDeductionsRunnerTests
             new NoReader(),
             new NoEmployees(),
             writer,
+            new NoPayrolls(),
             api,
             Options.Create(new WriteOptions { Enabled = writes }),
             TimeProvider.System
@@ -270,5 +286,85 @@ public sealed class ExportDeductionsRunnerTests
     {
         Assert.DoesNotContain(OperationKinds.ExportDeductions, OperationKinds.SupportedWith(false));
         Assert.Contains(OperationKinds.ExportDeductions, OperationKinds.SupportedWith(true));
+    }
+
+    private static readonly AgentOperation ExportAllowances = Export with
+    {
+        Kind = OperationKinds.ExportAllowances,
+    };
+
+    private static AllowancesWork AllowanceMonth(params AllowanceItem[] items) =>
+        new("CDN_Firma", 2026, 11, items);
+
+    [Fact]
+    public async Task Allowances_are_written_as_allowances_and_logged_under_their_own_codes()
+    {
+        var writer = new FakeWriter(request =>
+            request.Deduction.DeductionId == Housing ? Row("AlreadyExists") : Row("Succeeded")
+        );
+        var api = new FakeApi(
+            null,
+            allowances: AllowanceMonth(
+                new AllowanceItem(Housing, Olena, "BONOLE1", 339, 300m),
+                new AllowanceItem(Meals, Olena, "BONOLE1", 339, 50m)
+            )
+        );
+
+        var result = await Runner(api, writer).RunAsync(ExportAllowances, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.All(writer.Calls, call => Assert.Equal(PayItemKind.Allowance, call.Kind));
+        Assert.Equal(
+            [
+                (OperationLogCodes.AllowanceExists, (Guid?)Housing, (Guid?)null),
+                (OperationLogCodes.AllowanceAdded, Meals, null),
+            ],
+            result.Log.Select(e => (e.Code, e.AllowanceId, e.DeductionId))
+        );
+    }
+
+    [Fact]
+    public async Task An_allowance_not_written_fails_with_the_allowance_code()
+    {
+        var writer = new FakeWriter(_ => Row("ComponentNotFound"));
+        var api = new FakeApi(
+            null,
+            allowances: AllowanceMonth(new AllowanceItem(Housing, Olena, "BONOLE1", 338, 300m))
+        );
+
+        var result = await Runner(api, writer).RunAsync(ExportAllowances, CancellationToken.None);
+
+        Assert.Equal(OperationLogCodes.AllowancesFailed, result.ErrorCode);
+        Assert.Equal(OperationLogCodes.ComponentNotFound, Assert.Single(result.Log).Code);
+    }
+
+    [Fact]
+    public async Task Allowances_ambit_no_longer_hands_out_end_the_operation()
+    {
+        var writer = new FakeWriter(_ => Row("Succeeded"));
+
+        var result = await Runner(new FakeApi(null), writer)
+            .RunAsync(ExportAllowances, CancellationToken.None);
+
+        Assert.Equal(OperationLogCodes.AllowancesUnavailable, result.ErrorCode);
+        Assert.Empty(writer.Calls);
+    }
+
+    [Fact]
+    public async Task With_writes_switched_off_no_allowance_is_written()
+    {
+        var writer = new FakeWriter(_ => Row("Succeeded"));
+        var api = new FakeApi(
+            null,
+            allowances: AllowanceMonth(new AllowanceItem(Housing, Olena, "BONOLE1", 339, 1m))
+        );
+
+        var result = await Runner(api, writer, writes: false)
+            .RunAsync(ExportAllowances, CancellationToken.None);
+
+        Assert.Equal(OperationLogCodes.WritesDisabled, result.ErrorCode);
+        Assert.Empty(writer.Calls);
+        Assert.DoesNotContain(OperationKinds.ExportAllowances, OperationKinds.SupportedWith(false));
+        Assert.Contains(OperationKinds.ExportAllowances, OperationKinds.SupportedWith(true));
     }
 }

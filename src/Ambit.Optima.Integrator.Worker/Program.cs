@@ -2,6 +2,7 @@ using Ambit.Optima.Integrator.Core.Deductions;
 using Ambit.Optima.Integrator.Core.Diagnostics;
 using Ambit.Optima.Integrator.Core.Employees;
 using Ambit.Optima.Integrator.Core.Operations;
+using Ambit.Optima.Integrator.Core.Payrolls;
 using Ambit.Optima.Integrator.Infrastructure.AmbitApi;
 using Ambit.Optima.Integrator.Ipc;
 using Ambit.Optima.Integrator.SqlServer;
@@ -35,6 +36,7 @@ builder.Services.AddSingleton<IpcDispatcher>();
 builder.Services.AddHostedService<IpcServer>();
 
 builder.Services.AddSingleton<IPayrollComponentReader, SqlPayrollComponentReader>();
+builder.Services.AddSingleton<IPayrollReader, SqlPayrollReader>();
 
 builder.Services.AddSingleton<IValidateOptions<AmbitApiOptions>, AmbitApiOptionsValidator>();
 builder

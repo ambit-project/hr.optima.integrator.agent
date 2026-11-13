@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Ambit.Optima.Integrator.Core.Deductions;
 using Ambit.Optima.Integrator.Core.Employees;
+using Ambit.Optima.Integrator.Core.Payrolls;
 using JetBrains.Annotations;
 
 namespace Ambit.Optima.Integrator.Core.Operations;
@@ -19,11 +20,17 @@ public static class OperationKinds
     /// <summary>Gives employees one month's deductions. Offered only when writes are switched on locally.</summary>
     public const string ExportDeductions = "ExportDeductions";
 
-    private static readonly IReadOnlyList<string> Supported = [ReadPayrollComponents];
+    /// <summary>Gives employees one month's allowances. Offered only when writes are switched on locally.</summary>
+    public const string ExportAllowances = "ExportAllowances";
+
+    /// <summary>Reads one month's payroll lists of one company.</summary>
+    public const string ReadPayrolls = "ReadPayrolls";
+
+    private static readonly IReadOnlyList<string> Reads = [ReadPayrollComponents, ReadPayrolls];
 
     /// <summary>What this agent tells Ambit it can run: a write only where an administrator allowed writes.</summary>
     public static IReadOnlyList<string> SupportedWith(bool writesEnabled) =>
-        writesEnabled ? [ReadPayrollComponents, AddEmployees, ExportDeductions] : Supported;
+        writesEnabled ? [.. Reads, AddEmployees, ExportDeductions, ExportAllowances] : Reads;
 }
 
 /// <summary>
@@ -56,6 +63,15 @@ public static class OperationLogCodes
     public const string ComponentNotFound = "component_not_found";
     public const string DeductionsFailed = "deductions_failed";
     public const string DeductionsUnavailable = "deductions_unavailable";
+
+    public const string AllowanceAdded = "allowance_added";
+    public const string AllowanceExists = "allowance_exists";
+    public const string AllowanceRejected = "allowance_rejected";
+    public const string AllowanceFailed = "allowance_failed";
+    public const string AllowancesFailed = "allowances_failed";
+    public const string AllowancesUnavailable = "allowances_unavailable";
+
+    public const string PayrollsUnavailable = "payrolls_unavailable";
 }
 
 /// <summary>
@@ -71,7 +87,8 @@ public sealed record OperationLogEntry(
     int? Count = null,
     Guid? EmployeeId = null,
     Guid? DeductionId = null,
-    string? WarningCodes = null
+    string? WarningCodes = null,
+    Guid? AllowanceId = null
 );
 
 /// <summary>The outcome of one attempt. Only an operator in Ambit can start another.</summary>
@@ -81,7 +98,8 @@ public sealed record OperationResult(
     bool Succeeded,
     string? ErrorCode,
     IReadOnlyList<OperationLogEntry> Log,
-    IReadOnlyList<CompanyPayrollComponents>? PayrollComponents = null
+    IReadOnlyList<CompanyPayrollComponents>? PayrollComponents = null,
+    CompanyPayrolls? Payrolls = null
 );
 
 /// <summary>
@@ -141,6 +159,21 @@ public interface IAmbitApiClient
     /// 404 is final). An exception means Ambit could not be reached.
     /// </summary>
     Task<DeductionsWork?> GetDeductionsAsync(Guid operationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The allowances of an ExportAllowances operation this agent holds, or null when Ambit no longer hands them out
+    /// (a 404 is final). An exception means Ambit could not be reached.
+    /// </summary>
+    Task<AllowancesWork?> GetAllowancesAsync(Guid operationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The company and month of a ReadPayrolls operation this agent holds, or null when Ambit no longer hands them out
+    /// (a 404 is final). An exception means Ambit could not be reached.
+    /// </summary>
+    Task<PayrollPeriod?> GetPayrollPeriodAsync(
+        Guid operationId,
+        CancellationToken cancellationToken
+    );
 
     /// <summary>False when Ambit refused the report for good. An exception means it may be sent again.</summary>
     Task<bool> ReportAsync(
